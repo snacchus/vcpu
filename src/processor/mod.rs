@@ -240,15 +240,19 @@ impl Register {
 
 pub struct Processor {
     core: Core,
+    instructions: Vec<Word>,
 }
 
 impl Processor {
     pub fn new() -> Processor {
-        Processor{ core: Core::new() }
+        Processor{ 
+            core: Core::new(),
+            instructions: Vec::new(),
+        }
     }
 
     pub fn load_program(&mut self, data: &[Word]) {
-        self.core.load_program(data);
+        self.instructions = Vec::from(data);
     }
 
     pub fn register(&self, id: RegisterId) -> &Register {
@@ -258,11 +262,37 @@ impl Processor {
     pub fn run(&mut self) -> ExitCode {
         self.core.zero_registers();
 
-        loop {
-            let tick_result = self.core.tick();
+        if self.instructions.is_empty() {
+            return ExitCode::EmptyProgram;
+        }
 
-            if let TickResult::Exit(exit_code) = tick_result {
-                return exit_code;
+        let program_bytes = self.instructions.len() * constants::WORD_BYTES;
+
+        let mut program_counter = 0usize;
+
+        loop {
+            let i = program_counter / constants::WORD_BYTES;
+            let instruction = self.instructions[i];
+            
+            let tick_result = self.core.tick(instruction, program_counter);
+
+            match tick_result {
+                TickResult::Next => {
+                    let new_pc = program_counter.wrapping_add(constants::WORD_BYTES);
+                    program_counter = if new_pc < program_bytes { new_pc } else { 0 };
+                },
+                TickResult::Jump(new_pc) => {
+                    if new_pc >= program_bytes {
+                        return ExitCode::BadJump;
+                    } else if (new_pc % constants::WORD_BYTES) != 0 {
+                        return ExitCode::BadAlignment;
+                    } else {
+                        program_counter = new_pc;
+                    }
+                },
+                TickResult::Stop(exit_code) => {
+                    return exit_code;
+                }
             }
         }
     }

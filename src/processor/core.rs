@@ -3,18 +3,17 @@ extern crate num_integer;
 use std::num::Wrapping;
 use num::FromPrimitive;
 
-use super::super::{constants, Address, Word};
+use super::super::{constants, Word};
 use super::{register_index, OpCodeR, ExitCode, RegisterId, Register, OpCode};
 
 pub enum TickResult {
-    Running,
-    Exit(ExitCode),
+    Next,
+    Jump(usize),
+    Stop(ExitCode),
 }
 
 pub struct Core {
     registers: [Register; constants::REGISTER_COUNT],
-    instructions: Vec<Word>,
-    program_counter: Wrapping<usize>,
 }
 
 impl Core {
@@ -22,8 +21,6 @@ impl Core {
     pub fn new() -> Core {
         Core {
             registers: [Register::new(); constants::REGISTER_COUNT],
-            instructions: Vec::new(),
-            program_counter: Wrapping(0),
         }
     }
 
@@ -37,23 +34,16 @@ impl Core {
         &self.registers[register_index(id)]
     }
 
-    pub fn load_program(&mut self, data: &[Word]) {
-        self.instructions = Vec::from(data);
-    }
+    pub fn tick(&mut self, instruction: Word, program_counter: usize) -> TickResult {
+        let op_code = (instruction & constants::OPCODE_MASK) >> constants::OPCODE_OFFSET;
+        let op_code = FromPrimitive::from_u32(op_code);
 
-    pub fn tick(&mut self) -> TickResult {
-        let i = (self.program_counter / Wrapping(constants::WORD_BYTES)).0;
-        let instr = self.instructions[i];
-
-        let op_code_value = (instr & constants::OPCODE_MASK) >> constants::OPCODE_OFFSET;
-        let op_code = FromPrimitive::from_u32(op_code_value);
-
-        let mut jumped = false;
+        let program_counter = Wrapping(program_counter);
 
         if let Some(op_code) = op_code {
-            let rdid  = ((instr & constants::RD_MASK)  >> constants::RD_OFFSET) as usize;
-            let rs1id = ((instr & constants::RS1_MASK) >> constants::RS1_OFFSET) as usize;
-            let rs2id = ((instr & constants::RS2_MASK) >> constants::RS2_OFFSET) as usize;
+            let rdid  = ((instruction & constants::RD_MASK)  >> constants::RD_OFFSET) as usize;
+            let rs1id = ((instruction & constants::RS1_MASK) >> constants::RS1_OFFSET) as usize;
+            let rs2id = ((instruction & constants::RS2_MASK) >> constants::RS2_OFFSET) as usize;
 
             let rs1 = self.registers[rs1id];
             let rs2 = self.registers[rs2id];
@@ -65,24 +55,23 @@ impl Core {
             let rs1f = rs1.f();
             let rs2f = rs2.f();
 
-            let immediate = Wrapping(((instr & constants::IMMEDIATE_MASK) >> constants::IMMEDIATE_OFFSET) as i32);
+            let immediate = Wrapping(((instruction & constants::IMMEDIATE_MASK) >> constants::IMMEDIATE_OFFSET) as i32);
             let immediateu = Wrapping(immediate.0 as u32);
 
-            let mut addr   = (instr & constants::ADDRESS_MASK) >> constants::ADDRESS_OFFSET;
+            let mut address = (instruction & constants::ADDRESS_MASK) >> constants::ADDRESS_OFFSET;
 
-            if (addr & constants::ADDRESS_SIGN_MASK) != 0
+            if (address & constants::ADDRESS_SIGN_MASK) != 0
             {
-                addr |= constants::ADDRESS_EXTENSION;
+                address |= constants::ADDRESS_EXTENSION;
             }
 
-            let address = Wrapping(addr as Address);
-            let addressu = Wrapping(address.0 as u32);
+            let address = Wrapping(address as u32);
 
             match op_code {
                 OpCode::NOP => { },
 
                 OpCode::RIN => {
-                    let op_code_r_value = (instr & constants::OPCODE_R_MASK) >> constants::OPCODE_R_OFFSET;
+                    let op_code_r_value = (instruction & constants::OPCODE_R_MASK) >> constants::OPCODE_R_OFFSET;
                     let op_code_r = OpCodeR::from_u32(op_code_r_value);
 
                     if let Some(op_code_r) = op_code_r {
@@ -101,7 +90,7 @@ impl Core {
 
                             OpCodeR::DIV => {
                                 if !self.div(rdid, rs1i, rs2i) {
-                                    return TickResult::Exit(ExitCode::DivisionByZero);
+                                    return TickResult::Stop(ExitCode::DivisionByZero);
                                 }
                             },
 
@@ -170,12 +159,12 @@ impl Core {
                             }
                         }
                     } else {
-                        return TickResult::Exit(ExitCode::InvalidOpcode);
+                        return TickResult::Stop(ExitCode::InvalidOpcode);
                     }
                 },
 
                 OpCode::HALT => {
-                    return TickResult::Exit(ExitCode::Halted);
+                    return TickResult::Stop(ExitCode::Halted);
                 },
 
                 OpCode::CALL => {
@@ -195,6 +184,7 @@ impl Core {
                 },
 
                 OpCode::LOAD => {
+                    return TickResult::Stop(ExitCode::BadMemoryAccess);
                     //let mem_addr = rs1u + immediateu;
                     /*if (!m_pMemory::Read(memAddr, &rd.u))
                     {
@@ -203,6 +193,7 @@ impl Core {
                 },
 
                 OpCode::STOR => {
+                    return TickResult::Stop(ExitCode::BadMemoryAccess);
                     //let mem_addr = rs1u + immediateu;
                     /*if (!m_pMemory::Write(memAddr, rd.u))
                     {
@@ -224,7 +215,7 @@ impl Core {
 
                 OpCode::DIVI => {
                     if !self.div(rdid, rs1i, immediate) {
-                        return TickResult::Exit(ExitCode::DivisionByZero);
+                        return TickResult::Stop(ExitCode::DivisionByZero);
                     }
                 },
 
@@ -282,37 +273,32 @@ impl Core {
 
                 OpCode::BEZ => {
                     if rs1i.0 == 0 {
-                        self.program_counter += Wrapping(immediateu.0 as usize);
-                        jumped = true;
+                        return jump(program_counter + Wrapping(immediateu.0 as usize));
                     }
                 },
 
                 OpCode::BNZ => {
                     if rs1i.0 != 0 {
-                        self.program_counter += Wrapping(immediateu.0 as usize);
-                        jumped = true;
+                        return jump(program_counter + Wrapping(immediateu.0 as usize));
                     }
                 },
 
                 OpCode::JMP => {
-                    self.program_counter += Wrapping(addressu.0 as usize);
-                    jumped = true;
+                    return jump(program_counter + Wrapping(address.0 as usize));
                 },
 
                 OpCode::JL => {
-                    let new_addr = self.program_counter + Wrapping(addressu.0 as usize);
-                    self.jump_and_link(new_addr);
-                    jumped = true;
+                    self.link(program_counter);
+                    return jump(program_counter + Wrapping(address.0 as usize));
                 },
 
                 OpCode::JR => {
-                    self.program_counter = Wrapping(rs1u.0 as usize);
-                    jumped = true;
+                    return jump(Wrapping(rs1u.0 as usize));
                 },
 
                 OpCode::JLR => {
-                    self.jump_and_link(Wrapping(rs1u.0 as usize));
-                    jumped = true;
+                    self.link(program_counter);
+                    return jump(Wrapping(rs1u.0 as usize));
                 },
 
                 OpCode::ITOF => {
@@ -324,20 +310,10 @@ impl Core {
                 },
             }
         } else {
-            return TickResult::Exit(ExitCode::InvalidOpcode);
+            return TickResult::Stop(ExitCode::InvalidOpcode);
         }
 
-        if !jumped {
-            self.program_counter += Wrapping(constants::WORD_BYTES);
-        } else {
-            if self.program_counter.0 > self.instructions.len() {
-                return TickResult::Exit(ExitCode::BadJump);
-            } else if (self.program_counter.0 % constants::WORD_BYTES) != 0 {
-                return TickResult::Exit(ExitCode::BadAlignment);
-            }
-        }
-
-        TickResult::Running
+        TickResult::Next
     }
 
     fn write_i(&mut self, id: usize, value: Wrapping<i32>) {
@@ -364,16 +340,15 @@ impl Core {
     }
 
     fn set_if(&mut self, id: usize, condition: bool) {
-        self.write_u(id, set_if(condition));
+        self.write_u(id, if condition { Wrapping(1) } else { Wrapping(0) });
     }
 
-    fn jump_and_link(&mut self, new_addr: Wrapping<usize>) {
-        let addr = self.program_counter + Wrapping(constants::WORD_BYTES);
+    fn link(&mut self, program_counter: Wrapping<usize>) {
+        let addr = program_counter + Wrapping(constants::WORD_BYTES);
         self.write_u(register_index(RegisterId::RA), Wrapping(addr.0 as u32));
-        self.program_counter = new_addr;
     }
 }
 
-fn set_if(condition: bool) -> Wrapping<u32> {
-    if condition { Wrapping(1) } else { Wrapping(0) }
+fn jump(new_addr: Wrapping<usize>) -> TickResult {
+    TickResult::Jump(new_addr.0)
 }

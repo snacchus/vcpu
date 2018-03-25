@@ -10,14 +10,14 @@ type Word = u32;
 type Immediate = i16;
 type Address = i32;
 
+#[cfg(test)]
 mod tests {
-    use processor::*;
+    use std::num::Wrapping;
     use super::*;
+    use super::processor::*;
 
     #[test]
     fn wrapping_arithmetic() {
-        use std::num::Wrapping;
-
         let i = -50;
 
         let a = Wrapping(100u32);
@@ -28,7 +28,6 @@ mod tests {
     }
 
     fn test_program(program: &[Word], expected_code: ExitCode) -> Processor {
-
         let mut processor = Processor::new();
 
         processor.load_program(program);
