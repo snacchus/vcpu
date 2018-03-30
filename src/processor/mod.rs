@@ -1,8 +1,15 @@
 mod core;
 
+use std::rc::Rc;
+use std::cell::RefCell;
+use std::fmt;
+use std::error::Error as StdError;
 use num::traits::ToPrimitive;
 
-use super::{constants, Address, Immediate, Word};
+use byteorder::ByteOrder;
+
+use super::{constants, Address, Immediate, Word, Endian};
+use super::memory::Memory;
 use self::core::{Core, TickResult};
 
 // Instruction set based on the DLX processor
@@ -33,8 +40,12 @@ pub enum OpCode {
     COPY,        // | Copy                            | I      | Rd = Rs1
     LI,          // | Load immediate                  | I      | Rd = extend(immediate)
     LHI,         // | Load high bits                  | I      | Rd = immediate << 16
-    LOAD,        // | Load                            | I      | Rd = MEM[Rs1 + extend(immediate)]
-    STOR,        // | Store                           | I      | MEM[Rs1 + extend(immediate)] = Rd
+    LB,          // | Load byte                       | I      | Rd = MEM[Rs1 + extend(immediate)]
+    LH,          // | Load half word                  | I      | Rd = MEM[Rs1 + extend(immediate)]
+    LW,          // | Load word                       | I      | Rd = MEM[Rs1 + extend(immediate)]
+    SB,          // | Store byte                      | I      | MEM[Rs1 + extend(immediate)] = Rd
+    SH,          // | Store half word                 | I      | MEM[Rs1 + extend(immediate)] = Rd
+    SW,          // | Store word                      | I      | MEM[Rs1 + extend(immediate)] = Rd
     //--------------+---------------------------------+--------+-------------------------------------------------
     // Arithmetic   |                                 |        |
     ADDI,        // | Add immediate                   | I      | Rd = Rs1 + extend(immediate)
@@ -202,6 +213,27 @@ pub union Register {
     f : f32,
 }
 
+#[derive(Debug)]
+pub enum Error {
+    InvalidProgram(usize)
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Error::InvalidProgram(_) => f.write_str("InvalidProgram"),
+        }
+    }
+}
+
+impl StdError for Error {
+    fn description(&self) -> &str {
+        match *self {
+            Error::InvalidProgram(_) => "Program has invalid size! (Must be multiple of 4).",
+        }
+    }
+}
+
 impl Register {
     fn new() -> Register {
         Register { u: 0 }
@@ -240,19 +272,24 @@ impl Register {
 
 pub struct Processor {
     core: Core,
-    instructions: Vec<Word>,
+    instructions: Vec<u8>,
 }
 
 impl Processor {
-    pub fn new() -> Processor {
+    pub fn new(memory: Rc<RefCell<Memory>>) -> Processor {
         Processor{ 
-            core: Core::new(),
+            core: Core::new(memory),
             instructions: Vec::new(),
         }
     }
 
-    pub fn load_program(&mut self, data: &[Word]) {
-        self.instructions = Vec::from(data);
+    pub fn load_program(&mut self, data: &[u8]) -> Result<(), Error> {
+        if data.len() % constants::WORD_BYTES != 0 {
+            Err(Error::InvalidProgram(data.len()))
+        } else {
+            self.instructions = Vec::from(data);
+            Ok(())
+        }
     }
 
     pub fn register(&self, id: RegisterId) -> &Register {
@@ -266,13 +303,12 @@ impl Processor {
             return ExitCode::EmptyProgram;
         }
 
-        let program_bytes = self.instructions.len() * constants::WORD_BYTES;
+        let program_bytes = self.instructions.len();
 
         let mut program_counter = 0usize;
 
         loop {
-            let i = program_counter / constants::WORD_BYTES;
-            let instruction = self.instructions[i];
+            let instruction = Endian::read_u32(&self.instructions[program_counter..(program_counter + constants::WORD_BYTES)]);
             
             let tick_result = self.core.tick(instruction, program_counter);
 

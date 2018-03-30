@@ -1,9 +1,10 @@
-extern crate num_integer;
-
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::num::Wrapping;
 use num::FromPrimitive;
 
 use super::super::{constants, Word};
+use super::super::memory::Memory;
 use super::{register_index, OpCodeR, ExitCode, RegisterId, Register, OpCode};
 
 pub enum TickResult {
@@ -14,13 +15,15 @@ pub enum TickResult {
 
 pub struct Core {
     registers: [Register; constants::REGISTER_COUNT],
+    memory: Rc<RefCell<Memory>>,
 }
 
 impl Core {
     /// Constructs a new Core object.
-    pub fn new() -> Core {
+    pub fn new(memory: Rc<RefCell<Memory>>) -> Core {
         Core {
             registers: [Register::new(); constants::REGISTER_COUNT],
+            memory: memory,
         }
     }
 
@@ -183,22 +186,40 @@ impl Core {
                     self.write_i(rdid, immediate << 16);
                 },
 
-                OpCode::LOAD => {
-                    return TickResult::Stop(ExitCode::BadMemoryAccess);
-                    //let mem_addr = rs1u + immediateu;
-                    /*if (!m_pMemory::Read(memAddr, &rd.u))
-                    {
-                        exitCode = EC_BAD_MEMORY_ACCESS;
-                    }*/
+                OpCode::LB => {
+                    if !self.load(rdid, rs1u + immediateu, constants::BYTE_BYTES) {
+                        return TickResult::Stop(ExitCode::BadMemoryAccess);
+                    }
                 },
 
-                OpCode::STOR => {
-                    return TickResult::Stop(ExitCode::BadMemoryAccess);
-                    //let mem_addr = rs1u + immediateu;
-                    /*if (!m_pMemory::Write(memAddr, rd.u))
-                    {
-                        exitCode = EC_BAD_MEMORY_ACCESS;
-                    }*/
+                OpCode::LH => {
+                    if !self.load(rdid, rs1u + immediateu, constants::HALF_BYTES) {
+                        return TickResult::Stop(ExitCode::BadMemoryAccess);
+                    }
+                },
+
+                OpCode::LW => {
+                    if !self.load(rdid, rs1u + immediateu, constants::WORD_BYTES) {
+                        return TickResult::Stop(ExitCode::BadMemoryAccess);
+                    }
+                },
+
+                OpCode::SB => {
+                    if !self.store(rdid, rs1u + immediateu, constants::BYTE_BYTES) {
+                        return TickResult::Stop(ExitCode::BadMemoryAccess);
+                    }
+                },
+
+                OpCode::SH => {
+                    if !self.store(rdid, rs1u + immediateu, constants::HALF_BYTES) {
+                        return TickResult::Stop(ExitCode::BadMemoryAccess);
+                    }
+                },
+
+                OpCode::SW => {
+                    if !self.store(rdid, rs1u + immediateu, constants::WORD_BYTES) {
+                        return TickResult::Stop(ExitCode::BadMemoryAccess);
+                    }
                 },
 
                 OpCode::ADDI => {
@@ -346,6 +367,21 @@ impl Core {
     fn link(&mut self, program_counter: Wrapping<usize>) {
         let addr = program_counter + Wrapping(constants::WORD_BYTES);
         self.write_u(register_index(RegisterId::RA), Wrapping(addr.0 as u32));
+    }
+
+    fn load(&mut self, id: usize, address: Wrapping<u32>, size: usize) -> bool {
+        let result = self.memory.borrow().read(address.0 as usize, size);
+        if let Some(value) = result {
+            self.write_u(id, Wrapping(value as u32));
+            true
+        } else {
+            false
+        }
+    }
+
+    fn store(&self, id: usize, address: Wrapping<u32>, size: usize) -> bool {
+        let value = self.registers[id].u();
+        self.memory.borrow_mut().write(address.0 as usize, size, value)
     }
 }
 

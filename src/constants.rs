@@ -1,7 +1,11 @@
 use super::{Immediate, Word};
 use std::mem;
 
+pub const BYTE_BYTES        : usize = mem::size_of::<u8>();
 pub const BYTE_WIDTH        : usize = 8;
+
+pub const HALF_BYTES        : usize = mem::size_of::<u16>();
+pub const HALF_WIDTH        : usize = HALF_BYTES * BYTE_WIDTH;
 
 pub const WORD_BYTES        : usize = mem::size_of::<Word>();
 pub const WORD_WIDTH        : usize = WORD_BYTES * BYTE_WIDTH;
