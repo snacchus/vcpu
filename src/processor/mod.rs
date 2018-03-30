@@ -165,15 +165,18 @@ pub enum RegisterId {
     RA,         // Contains return address after jump and link
 }
 
+#[inline]
 fn enum_to_u32<T: ToPrimitive>(val: T) -> u32 {
     ToPrimitive::to_u32(&val).unwrap()
 }
 
+#[inline]
 pub fn register_index(id: RegisterId) -> usize {
     enum_to_u32(id) as usize
 }
 
-pub fn make_instruction_r(oc: OpCodeR, rd: RegisterId, rs1: RegisterId, rs2: RegisterId) -> Word {
+#[inline]
+pub fn instr_r(oc: OpCodeR, rd: RegisterId, rs1: RegisterId, rs2: RegisterId) -> Word {
     ((enum_to_u32(OpCode::RIN) << constants::OPCODE_OFFSET)   & constants::OPCODE_MASK)   |
     ((enum_to_u32(rd)          << constants::RD_OFFSET)       & constants::RD_MASK)       |
     ((enum_to_u32(rs1)         << constants::RS1_OFFSET)      & constants::RS1_MASK)      |
@@ -181,16 +184,28 @@ pub fn make_instruction_r(oc: OpCodeR, rd: RegisterId, rs1: RegisterId, rs2: Reg
     ((enum_to_u32(oc)          << constants::OPCODE_R_OFFSET) & constants::OPCODE_R_MASK) 
 }
 
-pub fn make_instruction_i(oc: OpCode, rd: RegisterId, rs1: RegisterId, immediate: Immediate) -> Word {
+#[inline]
+pub fn instr_i(oc: OpCode, rd: RegisterId, rs1: RegisterId, immediate: Immediate) -> Word {
     ((enum_to_u32(oc)    << constants::OPCODE_OFFSET)    & constants::OPCODE_MASK)    |
     ((enum_to_u32(rd)    << constants::RD_OFFSET)        & constants::RD_MASK)        |
     ((enum_to_u32(rs1)   << constants::RS1_OFFSET)       & constants::RS1_MASK)       |
     (((immediate as u32) << constants::IMMEDIATE_OFFSET) & constants::IMMEDIATE_MASK)
 }
 
-pub fn make_instruction_j(oc: OpCode, address: Address) -> Word {
+#[inline]
+pub fn instr_j(oc: OpCode, address: Address) -> Word {
     ((enum_to_u32(oc)    << constants::OPCODE_OFFSET) & constants::OPCODE_MASK) |
     (((address as u32) << constants::ADDRESS_OFFSET)  & constants::ADDRESS_MASK)
+}
+
+#[inline]
+pub fn jmp_addr_i16(offset: i16) -> Immediate {
+    offset * (constants::WORD_BYTES as i16)
+}
+
+#[inline]
+pub fn jmp_addr_i32(offset: i32) -> Address {
+    offset * (constants::WORD_BYTES as i32)
 }
 
 #[derive(PartialEq, Debug)]
@@ -272,14 +287,14 @@ impl Register {
 
 pub struct Processor {
     core: Core,
-    instructions: Vec<u8>,
+    data: Vec<u8>,
 }
 
 impl Processor {
     pub fn new(memory: Rc<RefCell<Memory>>) -> Processor {
         Processor{ 
             core: Core::new(memory),
-            instructions: Vec::new(),
+            data: Vec::new(),
         }
     }
 
@@ -287,7 +302,7 @@ impl Processor {
         if data.len() % constants::WORD_BYTES != 0 {
             Err(Error::InvalidProgram(data.len()))
         } else {
-            self.instructions = Vec::from(data);
+            self.data = Vec::from(data);
             Ok(())
         }
     }
@@ -299,28 +314,29 @@ impl Processor {
     pub fn run(&mut self) -> ExitCode {
         self.core.zero_registers();
 
-        if self.instructions.is_empty() {
+        if self.data.is_empty() {
             return ExitCode::EmptyProgram;
         }
 
-        let program_bytes = self.instructions.len();
+        let program_bytes = self.data.len() as u32;
 
-        let mut program_counter = 0usize;
+        let mut program_counter = 0u32;
 
         loop {
-            let instruction = Endian::read_u32(&self.instructions[program_counter..(program_counter + constants::WORD_BYTES)]);
+            let pc = program_counter as usize;
+            let instruction = Endian::read_u32(&self.data[pc..(pc + constants::WORD_BYTES)]);
             
             let tick_result = self.core.tick(instruction, program_counter);
 
             match tick_result {
                 TickResult::Next => {
-                    let new_pc = program_counter.wrapping_add(constants::WORD_BYTES);
+                    let new_pc = program_counter.wrapping_add(constants::WORD_BYTES as u32);
                     program_counter = if new_pc < program_bytes { new_pc } else { 0 };
                 },
                 TickResult::Jump(new_pc) => {
                     if new_pc >= program_bytes {
                         return ExitCode::BadJump;
-                    } else if (new_pc % constants::WORD_BYTES) != 0 {
+                    } else if (new_pc % (constants::WORD_BYTES as u32)) != 0 {
                         return ExitCode::BadAlignment;
                     } else {
                         program_counter = new_pc;

@@ -1,6 +1,6 @@
 use byteorder::ByteOrder;
 
-use super::Endian;
+use super::{constants, Endian};
 
 pub struct Memory {
     data: Vec<u8>
@@ -32,6 +32,24 @@ impl Memory {
         } else {
             None
         }
+    }
+
+    pub fn read_byte(&self, address: usize) -> Option<u8> {
+        match self.read(address, constants::BYTE_BYTES) {
+            Some(value) => Some(value as u8),
+            None => None,
+        }
+    }
+
+    pub fn read_half(&self, address: usize) -> Option<u16> {
+        match self.read(address, constants::HALF_BYTES) {
+            Some(value) => Some(value as u16),
+            None => None,
+        }
+    }
+
+    pub fn read_word(&self, address: usize) -> Option<u32> {
+        self.read(address, constants::WORD_BYTES)
     }
 
     pub fn write(&mut self, address: usize, size: usize, value: u32) -> bool {

@@ -9,7 +9,7 @@ use super::{register_index, OpCodeR, ExitCode, RegisterId, Register, OpCode};
 
 pub enum TickResult {
     Next,
-    Jump(usize),
+    Jump(u32),
     Stop(ExitCode),
 }
 
@@ -37,7 +37,7 @@ impl Core {
         &self.registers[register_index(id)]
     }
 
-    pub fn tick(&mut self, instruction: Word, program_counter: usize) -> TickResult {
+    pub fn tick(&mut self, instruction: Word, program_counter: u32) -> TickResult {
         let op_code = (instruction & constants::OPCODE_MASK) >> constants::OPCODE_OFFSET;
         let op_code = FromPrimitive::from_u32(op_code);
 
@@ -294,32 +294,32 @@ impl Core {
 
                 OpCode::BEZ => {
                     if rs1i.0 == 0 {
-                        return jump(program_counter + Wrapping(immediateu.0 as usize));
+                        return Self::jump(program_counter + immediateu);
                     }
                 },
 
                 OpCode::BNZ => {
                     if rs1i.0 != 0 {
-                        return jump(program_counter + Wrapping(immediateu.0 as usize));
+                        return Self::jump(program_counter + immediateu);
                     }
                 },
 
                 OpCode::JMP => {
-                    return jump(program_counter + Wrapping(address.0 as usize));
+                    return Self::jump(program_counter + address);
                 },
 
                 OpCode::JL => {
                     self.link(program_counter);
-                    return jump(program_counter + Wrapping(address.0 as usize));
+                    return Self::jump(program_counter + address);
                 },
 
                 OpCode::JR => {
-                    return jump(Wrapping(rs1u.0 as usize));
+                    return Self::jump(rs1u);
                 },
 
                 OpCode::JLR => {
                     self.link(program_counter);
-                    return jump(Wrapping(rs1u.0 as usize));
+                    return Self::jump(rs1u);
                 },
 
                 OpCode::ITOF => {
@@ -364,9 +364,9 @@ impl Core {
         self.write_u(id, if condition { Wrapping(1) } else { Wrapping(0) });
     }
 
-    fn link(&mut self, program_counter: Wrapping<usize>) {
-        let addr = program_counter + Wrapping(constants::WORD_BYTES);
-        self.write_u(register_index(RegisterId::RA), Wrapping(addr.0 as u32));
+    fn link(&mut self, program_counter: Wrapping<u32>) {
+        let addr = program_counter + Wrapping(constants::WORD_BYTES as u32);
+        self.write_u(register_index(RegisterId::RA), addr);
     }
 
     fn load(&mut self, id: usize, address: Wrapping<u32>, size: usize) -> bool {
@@ -383,8 +383,8 @@ impl Core {
         let value = self.registers[id].u();
         self.memory.borrow_mut().write(address.0 as usize, size, value)
     }
-}
 
-fn jump(new_addr: Wrapping<usize>) -> TickResult {
-    TickResult::Jump(new_addr.0)
+    fn jump(new_addr: Wrapping<u32>) -> TickResult {
+        TickResult::Jump(new_addr.0)
+    }
 }

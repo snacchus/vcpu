@@ -18,7 +18,6 @@ type Endian = byteorder::LittleEndian;
 
 #[cfg(test)]
 mod tests {
-    use std::num::Wrapping;
     use std::rc::Rc;
     use std::cell::RefCell;
     use byteorder::ByteOrder;
@@ -30,13 +29,13 @@ mod tests {
 
     #[test]
     fn wrapping_arithmetic() {
-        let i = -50;
+        let i = -20;
 
-        let a = Wrapping(100u32);
-        let b = Wrapping(i as u32);
-        let c = a + b;
+        let a = 20u32;
+        let b = i as u32;
+        let c = a.wrapping_add(b);
 
-        assert_eq!(c, Wrapping(50u32));
+        assert_eq!(c, 0u32);
     }
 
     #[allow(dead_code)]
@@ -76,7 +75,7 @@ mod tests {
     #[test]
     fn program_halt() {
         let program = transmute_vec(vec![
-            make_instruction_i(OpCode::HALT, RegisterId::ZERO, RegisterId::ZERO, 0)
+            instr_i(OpCode::HALT, RegisterId::ZERO, RegisterId::ZERO, 0)
         ]);
 
         test_program(&program[..]);
@@ -85,14 +84,38 @@ mod tests {
     #[test]
     fn program_add() {
         let program = transmute_vec(vec![
-            make_instruction_i(OpCode::LI, RegisterId::T0, RegisterId::ZERO, 42),
-            make_instruction_i(OpCode::LI, RegisterId::T1, RegisterId::ZERO, 64),
-            make_instruction_r(OpCodeR::ADD, RegisterId::T2, RegisterId::T0, RegisterId::T1),
-            make_instruction_i(OpCode::HALT, RegisterId::ZERO, RegisterId::ZERO, 0)
+            instr_i(OpCode::LI, RegisterId::T0, RegisterId::ZERO, 42),
+            instr_i(OpCode::LI, RegisterId::T1, RegisterId::ZERO, 64),
+            instr_r(OpCodeR::ADD, RegisterId::T2, RegisterId::T0, RegisterId::T1),
+            instr_i(OpCode::HALT, RegisterId::ZERO, RegisterId::ZERO, 0)
         ]);
 
         let (processor, _) = test_program(&program[..]);
 
         assert_eq!(processor.register(RegisterId::T2).i(), 106);
+    }
+
+    #[test]
+    fn program_loop() {
+        let iterations = 32i32;
+
+        let program = transmute_vec(vec![
+            instr_i(OpCode::SLTI, RegisterId::T2, RegisterId::T0, iterations as i16),
+            instr_i(OpCode::BEZ, RegisterId::ZERO, RegisterId::T2, jmp_addr_i16(5)),
+            instr_i(OpCode::SLLI, RegisterId::T1, RegisterId::T0, 2),
+            instr_i(OpCode::SW, RegisterId::T0, RegisterId::T1, 0),
+            instr_i(OpCode::ADDI, RegisterId::T0, RegisterId::T0, 1),
+            instr_j(OpCode::JMP, jmp_addr_i32(-5)),
+            instr_i(OpCode::HALT, RegisterId::ZERO, RegisterId::ZERO, 0)
+        ]);
+
+        let (_, memory) = test_program(&program[..]);
+
+        let mem_ref = memory.borrow();
+
+        for i in 0..iterations {
+            let value = mem_ref.read_word((i as usize) * constants::WORD_BYTES).unwrap() as i32;
+            assert_eq!(value, i);
+        }
     }
 }
