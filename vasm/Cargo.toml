@@ -1,0 +1,15 @@
+[package]
+name = "vasm"
+version = "0.1.0"
+authors = ["Dennis Heinze <dennisjp.heinze@gmail.com>"]
+description = "Parses and assembles VCPU assembly."
+
+[dependencies]
+byteorder = "1"
+clap = "2"
+matches = "0.1"
+num = "0.1"
+pest = "1.0"
+pest_derive = "1.0"
+vcpu = { path = ".." }
+vexfile = { path = "../vexfile" }

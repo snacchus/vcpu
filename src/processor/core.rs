@@ -5,7 +5,7 @@ use num::FromPrimitive;
 
 use super::super::{constants, Word};
 use super::super::memory::Memory;
-use super::{register_index, OpCodeR, ExitCode, RegisterId, Register, OpCode};
+use super::{register_index, ALUFunct, ExitCode, RegisterId, Register, OpCode};
 
 pub enum TickResult {
     Next,
@@ -73,91 +73,91 @@ impl Core {
             match op_code {
                 OpCode::NOP => { },
 
-                OpCode::RIN => {
-                    let op_code_r_value = (instruction & constants::OPCODE_R_MASK) >> constants::OPCODE_R_OFFSET;
-                    let op_code_r = OpCodeR::from_u32(op_code_r_value);
+                OpCode::ALU => {
+                    let funct_value = (instruction & constants::FUNCT_MASK) >> constants::FUNCT_OFFSET;
+                    let funct = ALUFunct::from_u32(funct_value);
 
-                    if let Some(op_code_r) = op_code_r {
-                        match op_code_r {
-                            OpCodeR::ADD => {
+                    if let Some(funct) = funct {
+                        match funct {
+                            ALUFunct::ADD => {
                                 self.write_i(rdid, rs1i + rs2i);
                             },
 
-                            OpCodeR::SUB => {
+                            ALUFunct::SUB => {
                                 self.write_i(rdid, rs1i - rs2i);
                             },
 
-                            OpCodeR::MUL => {
+                            ALUFunct::MUL => {
                                 self.write_i(rdid, rs1i * rs2i);
                             },
 
-                            OpCodeR::DIV => {
+                            ALUFunct::DIV => {
                                 if !self.div(rdid, rs1i, rs2i) {
                                     return TickResult::Stop(ExitCode::DivisionByZero);
                                 }
                             },
 
-                            OpCodeR::AND => {
+                            ALUFunct::AND => {
                                 self.write_i(rdid, rs1i & rs2i);
                             },
 
-                            OpCodeR::OR => {
+                            ALUFunct::OR => {
                                 self.write_i(rdid, rs1i | rs2i);
                             },
 
-                            OpCodeR::XOR => {
+                            ALUFunct::XOR => {
                                 self.write_i(rdid, rs1i ^ rs2i);
                             },
 
-                            OpCodeR::SLL => {
+                            ALUFunct::SLL => {
                                 self.write_i(rdid, rs1i << rs2u.0 as usize);
                             },
 
-                            OpCodeR::SRL => {
+                            ALUFunct::SRL => {
                                 self.write_u(rdid, rs1u >> rs2u.0 as usize);
                             },
 
-                            OpCodeR::SRA => {
+                            ALUFunct::SRA => {
                                 self.write_i(rdid, rs1i >> rs2u.0 as usize);
                             },
 
-                            OpCodeR::SEQ => {
+                            ALUFunct::SEQ => {
                                 self.set_if(rdid, rs1i == rs2i);
                             },
 
-                            OpCodeR::SNE => {
+                            ALUFunct::SNE => {
                                 self.set_if(rdid, rs1i != rs2i);
                             },
 
-                            OpCodeR::SLT => {
+                            ALUFunct::SLT => {
                                 self.set_if(rdid, rs1i < rs2i);
                             },
 
-                            OpCodeR::SGT => {
+                            ALUFunct::SGT => {
                                 self.set_if(rdid, rs1i > rs2i);
                             },
 
-                            OpCodeR::SLE => {
+                            ALUFunct::SLE => {
                                 self.set_if(rdid, rs1i <= rs2i);
                             },
 
-                            OpCodeR::SGE => {
+                            ALUFunct::SGE => {
                                 self.set_if(rdid, rs1i >= rs2i);
                             },
 
-                            OpCodeR::FADD => {
+                            ALUFunct::FADD => {
                                 self.write_f(rdid, rs1f + rs2f);
                             },
 
-                            OpCodeR::FSUB => {
+                            ALUFunct::FSUB => {
                                 self.write_f(rdid, rs1f - rs2f);
                             },
 
-                            OpCodeR::FMUL => {
+                            ALUFunct::FMUL => {
                                 self.write_f(rdid, rs1f * rs2f);
                             },
 
-                            OpCodeR::FDIV => {
+                            ALUFunct::FDIV => {
                                 self.write_f(rdid, rs1f / rs2f);
                             }
                         }
@@ -369,8 +369,8 @@ impl Core {
         self.write_u(register_index(RegisterId::RA), addr);
     }
 
-    fn load(&mut self, id: usize, address: Wrapping<u32>, size: usize) -> bool {
-        let result = self.memory.borrow().read(address.0 as usize, size);
+    fn load(&mut self, id: usize, address: Wrapping<u32>, size: u32) -> bool {
+        let result = self.memory.borrow().read(address.0, size);
         if let Some(value) = result {
             self.write_u(id, Wrapping(value as u32));
             true
@@ -379,9 +379,9 @@ impl Core {
         }
     }
 
-    fn store(&self, id: usize, address: Wrapping<u32>, size: usize) -> bool {
+    fn store(&self, id: usize, address: Wrapping<u32>, size: u32) -> bool {
         let value = self.registers[id].u();
-        self.memory.borrow_mut().write(address.0 as usize, size, value)
+        self.memory.borrow_mut().write(address.0, size, value)
     }
 
     fn jump(new_addr: Wrapping<u32>) -> TickResult {

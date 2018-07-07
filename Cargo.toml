@@ -3,10 +3,12 @@ name = "vcpu"
 version = "0.1.0"
 authors = ["Dennis Heinze <dennisjp.heinze@gmail.com>"]
 
+[workspace]
+members = [ "vasm", "vexfile" ]
+
 [dependencies]
+byteorder = "1"
 num = "0.1"
+num-derive = "0.2"
 num-integer = "0.1"
 num-traits = "0.2"
-num-derive = "0.2"
-
-byteorder = "1"

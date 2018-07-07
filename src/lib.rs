@@ -1,20 +1,21 @@
+extern crate byteorder;
 extern crate num;
-extern crate num_integer;
-
 #[macro_use]
 extern crate num_derive;
-
-extern crate byteorder;
+extern crate num_integer;
 
 pub mod constants;
 pub mod processor;
 pub mod memory;
 
-type Word = u32;
-type Immediate = i16;
-type Address = i32;
+pub type Word = u32;
+pub type Immediate = i16;
+pub type Address = i32;
 
-type Endian = byteorder::LittleEndian;
+pub type Endian = byteorder::LittleEndian;
+
+pub use processor::*;
+pub use memory::*;
 
 #[cfg(test)]
 mod tests {
@@ -22,8 +23,6 @@ mod tests {
     use std::cell::RefCell;
     use byteorder::ByteOrder;
     use super::*;
-    use super::processor::*;
-    use super::memory::*;
 
     type MemoryRef = Rc<RefCell<Memory>>;
 
@@ -39,7 +38,7 @@ mod tests {
     }
 
     #[allow(dead_code)]
-    fn test_program_me(mem_size: usize, program: &[u8], expected_code: ExitCode) -> (Processor, MemoryRef) {
+    fn test_program_me(mem_size: u32, program: &[u8], expected_code: ExitCode) -> (Processor, MemoryRef) {
         let memory = Rc::new(RefCell::new(Memory::new(mem_size)));
         let mut processor = Processor::new(memory.clone());
 
@@ -57,7 +56,7 @@ mod tests {
     }
 
     #[allow(dead_code)]
-    fn test_program_m(mem_size: usize, program: &[u8]) -> (Processor, MemoryRef) {
+    fn test_program_m(mem_size: u32, program: &[u8]) -> (Processor, MemoryRef) {
         test_program_me(mem_size, program, ExitCode::Halted)
     }
 
@@ -67,7 +66,7 @@ mod tests {
     }
 
     fn transmute_vec(vec: Vec<Word>) -> Vec<u8> {
-        let mut byte_vec = vec![0; vec.len() * constants::WORD_BYTES];
+        let mut byte_vec = vec![0; vec.len() * constants::WORD_BYTES as usize];
         Endian::write_u32_into(&vec[..], &mut byte_vec[..]);
         byte_vec
     }
@@ -86,7 +85,7 @@ mod tests {
         let program = transmute_vec(vec![
             instr_i(OpCode::LI, RegisterId::T0, RegisterId::ZERO, 42),
             instr_i(OpCode::LI, RegisterId::T1, RegisterId::ZERO, 64),
-            instr_r(OpCodeR::ADD, RegisterId::T2, RegisterId::T0, RegisterId::T1),
+            instr_alu(ALUFunct::ADD, RegisterId::T2, RegisterId::T0, RegisterId::T1),
             instr_i(OpCode::HALT, RegisterId::ZERO, RegisterId::ZERO, 0)
         ]);
 
@@ -114,7 +113,7 @@ mod tests {
         let mem_ref = memory.borrow();
 
         for i in 0..iterations {
-            let value = mem_ref.read_word((i as usize) * constants::WORD_BYTES).unwrap() as i32;
+            let value = mem_ref.read_word(i as u32 * constants::WORD_BYTES).unwrap() as i32;
             assert_eq!(value, i);
         }
     }

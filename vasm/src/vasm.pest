@@ -1,0 +1,237 @@
+// program rules
+
+program = { soi ~ data ~ instructions ~ eoi }
+
+// common rules
+
+line_end = _{ "\n" | "\r\n" }
+whitespace = _{ " " | "\t" | line_end }
+comment = _{ "#" ~ ( !line_end ~ any )* ~ (line_end | eoi) }
+
+token_sep = _{
+    ( whitespace* ~ (comment ~ whitespace*)+ ) |
+    whitespace+
+}
+
+bin_digit = _{ '0'..'1' }
+oct_digit = _{ '0'..'7' }
+dec_digit = _{ '0'..'9' }
+hex_digit = _{ '0'..'9' | 'a'..'f' | 'A'..'F' }
+
+sign = { "+" | "-" }
+
+dec_uint = @{ dec_digit+ }
+dec_int = @{ sign? ~ dec_uint }
+
+bin_lit = @{ bin_digit+ }
+oct_lit = @{ oct_digit+ }
+hex_lit = @{ hex_digit+ }
+
+bin_uint = ${ "0b" ~ bin_lit }
+oct_uint = ${ "0o" ~ oct_lit }
+hex_uint = ${ "0x" ~ hex_lit }
+
+uint = { bin_uint | oct_uint | hex_uint | dec_uint }
+int = { bin_uint | oct_uint | hex_uint | dec_int }
+
+exp = @{ ^"e" ~ int }
+float = @{ dec_int ~ (("." ~ dec_uint? ~ exp?) | exp) }
+
+alpha = _{ 'a'..'z' | 'A'..'Z' }
+underscore = _{ "_" }
+
+alphanum = _{ alpha | dec_digit }
+
+identifier = @{ ( alpha | underscore ) ~ ( alphanum | underscore )* }
+
+label = { identifier ~ ":" }
+
+// data rules
+
+int_list = !{ int ~ ( "," ~ int)* }
+
+data_block = ${ ".block" ~ token_sep ~ uint }
+data_byte = ${ ".byte" ~ token_sep ~ int_list }
+data_short = ${ ".short" ~ token_sep ~ int_list }
+data_word = ${ ".word" ~ token_sep ~ int_list }
+
+// TODO: string data
+
+data_element = {
+    data_block |
+    data_byte  |
+    data_short |
+    data_word
+}
+
+labeled_data_element = !{ label? ~ data_element }
+
+data = ${ ".data" ~ token_sep ~ labeled_data_element? ~ (token_sep ~ labeled_data_element)* }
+
+// instruction rules
+
+jump_target = { int | identifier }
+
+register = ${ "$" ~ register_id }
+
+opcode_alu_sep = ${ opcode_alu ~ token_sep }
+opcode_i_sep = ${ opcode_i ~ token_sep }
+opcode_ds_sep = ${ opcode_ds ~ token_sep }
+opcode_li_sep = ${ opcode_li ~ token_sep }
+opcode_la_sep = ${ opcode_la ~ token_sep }
+opcode_br_sep = ${ opcode_br ~ token_sep }
+opcode_jr_sep = ${ opcode_jr ~ token_sep }
+opcode_ls_sep = ${ opcode_ls ~ token_sep }
+opcode_j_sep = ${ opcode_j ~ token_sep }
+
+instruction_alu = { opcode_alu_sep ~ register ~ "," ~ register ~ "," ~ register }
+instruction_i = { opcode_i_sep ~ register ~ "," ~ register ~ "," ~ int }
+instruction_ds = { opcode_ds_sep ~ register ~ "," ~ register }
+instruction_li = { opcode_li_sep ~ register ~ "," ~ int }
+instruction_la = { opcode_la_sep ~ register ~ "," ~ identifier }
+instruction_e = { opcode_e }
+instruction_br = { opcode_br_sep ~ register ~ "," ~ jump_target }
+instruction_jr = { opcode_jr_sep ~ register }
+instruction_ls = { opcode_ls_sep ~ register ~ "," ~ int ~ "(" ~ register ~ ")" }
+instruction_j = { opcode_j_sep ~ jump_target }
+
+instruction = {
+    instruction_alu |
+    instruction_i   |
+    instruction_ds  |
+    instruction_li  |
+    instruction_la  |
+    instruction_e   |
+    instruction_br  |
+    instruction_jr  | 
+    instruction_ls  |
+    instruction_j
+}
+
+labeled_instruction = !{ label? ~ instruction }
+
+instructions = ${ ".instructions" ~ token_sep ~ labeled_instruction? ~ (token_sep ~ labeled_instruction)* }
+
+// enum rules
+
+register_id = {
+    ^"ZERO" |
+    ^"V0"   |
+    ^"V1"   |
+    ^"A0"   |
+    ^"A1"   |
+    ^"A2"   |
+    ^"A3"   |
+    ^"A4"   |
+    ^"T0"   |
+    ^"T1"   |
+    ^"T2"   |
+    ^"T3"   |
+    ^"T4"   |
+    ^"T5"   |
+    ^"T6"   |
+    ^"T7"   |
+    ^"T8"   |
+    ^"T9"   |
+    ^"S0"   |
+    ^"S1"   |
+    ^"S2"   |
+    ^"S3"   |
+    ^"S4"   |
+    ^"S5"   |
+    ^"S6"   |
+    ^"S7"   |
+    ^"S8"   |
+    ^"S9"   |
+    ^"SP"   |
+    ^"FP"   |
+    ^"RM"   |
+    ^"RA"  
+}
+
+opcode_alu = {
+    ^"ADD"  |
+    ^"SUB"  |
+    ^"MUL"  |
+    ^"DIV"  |
+    ^"AND"  |
+    ^"OR"   |
+    ^"XOR"  |
+    ^"SLL"  |
+    ^"SRL"  |
+    ^"SRA"  |
+    ^"SEQ"  |
+    ^"SNE"  |
+    ^"SLT"  |
+    ^"SGT"  |
+    ^"SLE"  |
+    ^"SGE"  |
+    ^"FADD" |
+    ^"FSUB" |
+    ^"FMUL" |
+    ^"FDIV" 
+}
+
+opcode_i = {
+    ^"ADDI" |
+    ^"SUBI" |
+    ^"MULI" |
+    ^"DIVI" |
+    ^"ANDI" |
+    ^"ORI"  |
+    ^"XORI" |
+    ^"SLLI" |
+    ^"SRLI" |
+    ^"SRAI" |
+    ^"SEQI" |
+    ^"SNEI" |
+    ^"SLTI" |
+    ^"SGTI" |
+    ^"SLEI" |
+    ^"SGEI" 
+}
+
+opcode_ds = {
+    ^"COPY" |
+    ^"FLIP" |
+    ^"ITOF" |
+    ^"FTOI"
+}
+
+opcode_li = {
+    ^"LI" |
+    ^"LHI"
+}
+
+opcode_la = {
+    ^"LA"
+}
+
+opcode_e = {
+    ^"NOP" |
+    ^"HALT"
+}
+
+opcode_br = {
+    ^"BEZ" |
+    ^"BNZ"
+}
+
+opcode_jr = {
+    ^"JR" |
+    ^"JLR"
+}
+
+opcode_ls = {
+    ^"LB" |
+    ^"LH" |
+    ^"LW" |
+    ^"SB" |
+    ^"SH" |
+    ^"SW"
+}
+
+opcode_j = {
+    ^"JMP" |
+    ^"JL"
+}
