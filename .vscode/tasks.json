@@ -28,6 +28,17 @@
             "problemMatcher": [
                 "$rustc"
             ]
+        },
+        {
+            "type": "shell",
+            "label": "cargo doc",
+            "command": "cargo",
+            "args": [
+                "doc",
+                "--all",
+                "--no-deps"
+            ],
+            "problemMatcher": []
         }
     ]
 }

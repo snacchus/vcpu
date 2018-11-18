@@ -1,17 +1,15 @@
 mod core;
 mod enums;
 
+use memory::Storage;
 pub use self::enums::*;
 
-use std::rc::Rc;
-use std::cell::RefCell;
 use std::fmt;
 use std::error::Error as StdError;
 
 use byteorder::ByteOrder;
 
 use super::{constants, Address, Immediate, Endian};
-use super::memory::Memory;
 use self::core::{Core, TickResult};
 
 #[inline]
@@ -103,24 +101,28 @@ impl Register {
 
 pub struct Processor {
     core: Core,
-    data: Vec<u8>,
+    instructions: Vec<u8>,
 }
 
 impl Processor {
-    pub fn new(memory: Rc<RefCell<Memory>>) -> Processor {
+    pub fn new(storage: Box<dyn Storage>) -> Processor {
         Processor{ 
-            core: Core::new(memory),
-            data: Vec::new(),
+            core: Core::new(storage),
+            instructions: Vec::new(),
         }
     }
 
-    pub fn load_program(&mut self, data: &[u8]) -> Result<(), Error> {
-        if data.len() as u32 % constants::WORD_BYTES != 0 {
-            Err(Error::InvalidProgram(data.len()))
+    pub fn load_instructions(&mut self, instructions: &[u8]) -> Result<(), Error> {
+        if instructions.len() as u32 % constants::WORD_BYTES != 0 {
+            Err(Error::InvalidProgram(instructions.len()))
         } else {
-            self.data = Vec::from(data);
+            self.instructions = Vec::from(instructions);
             Ok(())
         }
+    }
+
+    pub fn storage(&self) -> &dyn Storage {
+        self.core.storage()
     }
 
     pub fn register(&self, id: RegisterId) -> &Register {
@@ -130,27 +132,27 @@ impl Processor {
     pub fn run(&mut self) -> ExitCode {
         self.core.zero_registers();
 
-        if self.data.is_empty() {
+        if self.instructions.is_empty() {
             return ExitCode::EmptyProgram;
         }
 
-        let program_bytes = self.data.len() as u32;
+        let instr_len = self.instructions.len() as u32;
 
         let mut program_counter = 0u32;
 
         loop {
             let pc = program_counter as usize;
-            let instruction = Endian::read_u32(&self.data[pc..(pc + constants::WORD_BYTES as usize)]);
+            let instruction = Endian::read_u32(&self.instructions[pc..(pc + constants::WORD_BYTES as usize)]);
             
             let tick_result = self.core.tick(instruction, program_counter);
 
             match tick_result {
                 TickResult::Next => {
                     let new_pc = program_counter.wrapping_add(constants::WORD_BYTES);
-                    program_counter = if new_pc < program_bytes { new_pc } else { 0 };
+                    program_counter = if new_pc < instr_len { new_pc } else { 0 };
                 },
                 TickResult::Jump(new_pc) => {
-                    if new_pc >= program_bytes {
+                    if new_pc >= instr_len {
                         return ExitCode::BadJump;
                     } else if (new_pc % (constants::WORD_BYTES as u32)) != 0 {
                         return ExitCode::BadAlignment;

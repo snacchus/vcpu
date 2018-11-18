@@ -19,12 +19,8 @@ pub use memory::*;
 
 #[cfg(test)]
 mod tests {
-    use std::rc::Rc;
-    use std::cell::RefCell;
     use byteorder::ByteOrder;
     use super::*;
-
-    type MemoryRef = Rc<RefCell<Memory>>;
 
     #[test]
     fn wrapping_arithmetic() {
@@ -38,30 +34,30 @@ mod tests {
     }
 
     #[allow(dead_code)]
-    fn test_program_me(mem_size: u32, program: &[u8], expected_code: ExitCode) -> (Processor, MemoryRef) {
-        let memory = Rc::new(RefCell::new(Memory::new(mem_size)));
-        let mut processor = Processor::new(memory.clone());
+    fn test_program_me(mem_size: u32, program: &[u8], expected_code: ExitCode) -> Processor {
+        let memory = Box::new(Memory::new(mem_size));
+        let mut processor = Processor::new(memory);
 
-        processor.load_program(program).unwrap();
+        processor.load_instructions(program).unwrap();
         let exit_code = processor.run();
 
         assert_eq!(exit_code, expected_code);
 
-        (processor, memory)
+        processor
     }
 
     #[allow(dead_code)]
-    fn test_program_e(program: &[u8], expected_code: ExitCode) -> (Processor, MemoryRef) {
+    fn test_program_e(program: &[u8], expected_code: ExitCode) -> Processor {
         test_program_me(1024, program, expected_code)
     }
 
     #[allow(dead_code)]
-    fn test_program_m(mem_size: u32, program: &[u8]) -> (Processor, MemoryRef) {
+    fn test_program_m(mem_size: u32, program: &[u8]) -> Processor {
         test_program_me(mem_size, program, ExitCode::Halted)
     }
 
     #[allow(dead_code)]
-    fn test_program(program: &[u8]) -> (Processor, MemoryRef) {
+    fn test_program(program: &[u8]) -> Processor {
         test_program_e(program, ExitCode::Halted)
     }
 
@@ -89,7 +85,7 @@ mod tests {
             instr_i(OpCode::HALT, RegisterId::ZERO, RegisterId::ZERO, 0)
         ]);
 
-        let (processor, _) = test_program(&program[..]);
+        let processor = test_program(&program[..]);
 
         assert_eq!(processor.register(RegisterId::T2).i(), 106);
     }
@@ -108,12 +104,11 @@ mod tests {
             instr_i(OpCode::HALT, RegisterId::ZERO, RegisterId::ZERO, 0)
         ]);
 
-        let (_, memory) = test_program(&program[..]);
-
-        let mem_ref = memory.borrow();
+        let processor = test_program(&program[..]);
+        let storage = processor.storage();
 
         for i in 0..iterations {
-            let value = mem_ref.read_word(i as u32 * constants::WORD_BYTES).unwrap() as i32;
+            let value = storage.read_word(i as u32 * constants::WORD_BYTES).unwrap() as i32;
             assert_eq!(value, i);
         }
     }

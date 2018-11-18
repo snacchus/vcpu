@@ -1,10 +1,9 @@
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::num::Wrapping;
+use std::ops::{Deref, DerefMut};
 use num::FromPrimitive;
 
 use super::super::{constants, Word};
-use super::super::memory::Memory;
+use super::super::memory::Storage;
 use super::{register_index, ALUFunct, ExitCode, RegisterId, Register, OpCode};
 
 pub enum TickResult {
@@ -15,16 +14,20 @@ pub enum TickResult {
 
 pub struct Core {
     registers: [Register; constants::REGISTER_COUNT],
-    memory: Rc<RefCell<Memory>>,
+    storage: Box<dyn Storage>,
 }
 
 impl Core {
     /// Constructs a new Core object.
-    pub fn new(memory: Rc<RefCell<Memory>>) -> Core {
+    pub fn new(storage: Box<dyn Storage>) -> Core {
         Core {
             registers: [Register::new(); constants::REGISTER_COUNT],
-            memory: memory,
+            storage: storage,
         }
+    }
+
+    pub fn storage(&self) -> &dyn Storage {
+        self.storage.deref()
     }
 
     pub fn zero_registers(&mut self) {
@@ -370,18 +373,14 @@ impl Core {
     }
 
     fn load(&mut self, id: usize, address: Wrapping<u32>, size: u32) -> bool {
-        let result = self.memory.borrow().read(address.0, size);
-        if let Some(value) = result {
-            self.write_u(id, Wrapping(value as u32));
-            true
-        } else {
-            false
-        }
+        self.storage.deref().read(address.0, size)
+            .map(|v| self.write_u(id, Wrapping(v)))
+            .is_ok()
     }
 
-    fn store(&self, id: usize, address: Wrapping<u32>, size: u32) -> bool {
+    fn store(&mut self, id: usize, address: Wrapping<u32>, size: u32) -> bool {
         let value = self.registers[id].u();
-        self.memory.borrow_mut().write(address.0, size, value)
+        self.storage.deref_mut().write(address.0, size, value).is_ok()
     }
 
     fn jump(new_addr: Wrapping<u32>) -> TickResult {
