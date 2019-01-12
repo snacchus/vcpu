@@ -1,7 +1,5 @@
 #[macro_use]
 extern crate clap;
-extern crate vasm;
-extern crate vexfile;
 
 use clap::Arg;
 use std::fs::File;

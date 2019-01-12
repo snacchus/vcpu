@@ -2,6 +2,7 @@
 name = "vcpu"
 version = "0.1.0"
 authors = ["Dennis Heinze <dennisjp.heinze@gmail.com>"]
+edition = "2018"
 
 [workspace]
 members = [ "vasm", "vexfile" ]

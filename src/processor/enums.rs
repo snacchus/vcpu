@@ -1,5 +1,6 @@
-use { Address, Immediate, Word, constants };
+use crate::{ Address, Immediate, Word, constants };
 use num::traits::ToPrimitive;
+use num_derive::{ ToPrimitive, FromPrimitive };
 use std::error::Error;
 use std::fmt;
 use std::str::FromStr;

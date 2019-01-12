@@ -1,5 +1,3 @@
-extern crate byteorder;
-
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::io::prelude::*;
 use std::io::{BufReader, BufWriter};

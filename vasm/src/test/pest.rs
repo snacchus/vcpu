@@ -1,5 +1,5 @@
-use Rule;
-use VASMParser;
+use crate::{ Rule, VASMParser };
+use ::pest::*;
 
 #[test]
 fn comment() {

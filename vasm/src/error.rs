@@ -1,4 +1,4 @@
-use Rule;
+use crate::Rule;
 use vcpu::ParseEnumError;
 use std::num::ParseIntError;
 use pest;

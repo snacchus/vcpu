@@ -1,5 +1,3 @@
-extern crate vexfile;
-
 #[test]
 fn write_read() {
     let path = "test.vex";

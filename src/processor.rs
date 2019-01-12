@@ -1,7 +1,7 @@
 mod core;
 mod enums;
 
-use memory::Storage;
+use crate::memory::Storage;
 pub use self::enums::*;
 
 use std::fmt;

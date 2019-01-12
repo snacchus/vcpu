@@ -1,9 +1,3 @@
-extern crate byteorder;
-extern crate num;
-#[macro_use]
-extern crate num_derive;
-extern crate num_integer;
-
 pub mod constants;
 pub mod processor;
 pub mod memory;
@@ -14,8 +8,8 @@ pub type Address = i32;
 
 pub type Endian = byteorder::LittleEndian;
 
-pub use processor::*;
-pub use memory::*;
+pub use crate::processor::*;
+pub use crate::memory::*;
 
 #[cfg(test)]
 mod tests {

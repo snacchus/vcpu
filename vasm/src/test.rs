@@ -1,14 +1,7 @@
-use Program;
-use VASMParser;
-use Rule;
-use ParsedInstruction;
-use JumpTarget;
-use parse_and_assemble;
+use crate::{ Program, VASMParser, Rule, ParsedInstruction, JumpTarget, parse_and_assemble };
 use vcpu::*;
 use byteorder::ByteOrder;
-use pest::Error as PestError;
-use pest::Parser;
-use pest::iterators::Pair;
+use ::pest::{ Error as PestError, Parser, iterators::Pair };
 use std::collections::HashMap;
 
 mod pest;
