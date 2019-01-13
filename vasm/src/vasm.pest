@@ -1,31 +1,25 @@
 // program rules
 
-program = { soi ~ data ~ instructions ~ eoi }
+program = { SOI ~ data ~ instructions ~ EOI }
 
 // common rules
 
-line_end = _{ "\n" | "\r\n" }
-whitespace = _{ " " | "\t" | line_end }
-comment = _{ "#" ~ ( !line_end ~ any )* ~ (line_end | eoi) }
+WHITESPACE = _{ " " | "\t" | NEWLINE }
+COMMENT = _{ "#" ~ ( !NEWLINE ~ ANY )* ~ (NEWLINE | EOI) }
 
 token_sep = _{
-    ( whitespace* ~ (comment ~ whitespace*)+ ) |
-    whitespace+
+    ( WHITESPACE* ~ (COMMENT ~ WHITESPACE*)+ ) |
+    WHITESPACE+
 }
-
-bin_digit = _{ '0'..'1' }
-oct_digit = _{ '0'..'7' }
-dec_digit = _{ '0'..'9' }
-hex_digit = _{ '0'..'9' | 'a'..'f' | 'A'..'F' }
 
 sign = { "+" | "-" }
 
-dec_uint = @{ dec_digit+ }
+dec_uint = @{ ASCII_DIGIT+ }
 dec_int = @{ sign? ~ dec_uint }
 
-bin_lit = @{ bin_digit+ }
-oct_lit = @{ oct_digit+ }
-hex_lit = @{ hex_digit+ }
+bin_lit = @{ ASCII_BIN_DIGIT+ }
+oct_lit = @{ ASCII_OCT_DIGIT+ }
+hex_lit = @{ ASCII_HEX_DIGIT+ }
 
 bin_uint = ${ "0b" ~ bin_lit }
 oct_uint = ${ "0o" ~ oct_lit }
@@ -37,12 +31,9 @@ int = { bin_uint | oct_uint | hex_uint | dec_int }
 exp = @{ ^"e" ~ int }
 float = @{ dec_int ~ (("." ~ dec_uint? ~ exp?) | exp) }
 
-alpha = _{ 'a'..'z' | 'A'..'Z' }
 underscore = _{ "_" }
 
-alphanum = _{ alpha | dec_digit }
-
-identifier = @{ ( alpha | underscore ) ~ ( alphanum | underscore )* }
+identifier = @{ ( ASCII_ALPHA | underscore ) ~ ( ASCII_ALPHANUMERIC | underscore )* }
 
 label = { identifier ~ ":" }
 

@@ -6,14 +6,14 @@ fn comment() {
     parses_to! {
         parser: VASMParser,
         input: "# oai0ß9jqp4o5gm66185 dA';:%",
-        rule: Rule::comment,
+        rule: Rule::COMMENT,
         tokens: []
     };
 
     parses_to! {
         parser: VASMParser,
         input: "#balbalao40j3\n ughalsdhgf",
-        rule: Rule::comment,
+        rule: Rule::COMMENT,
         tokens: []
     };
 }
@@ -463,7 +463,8 @@ ADD $t0, $t1, $t2";
                     register(64, 67, [ register_id(65, 67) ]),
                     register(69, 72, [ register_id(70, 72) ])
                 ]) ]) ])
-            ])
+            ]),
+            EOI(72, 72)
         ]) ]
     };
 }

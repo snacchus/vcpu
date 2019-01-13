@@ -1,5 +1,5 @@
 use crate::{parse_and_assemble, JumpTarget, ParsedInstruction, Program, Rule, VASMParser};
-use ::pest::{iterators::Pair, Error as PestError, Parser};
+use ::pest::{error::Error as PestError, iterators::Pair, Parser};
 use byteorder::ByteOrder;
 use std::collections::HashMap;
 use vcpu::*;
@@ -14,7 +14,7 @@ macro_rules! hashmap {
     }}
 }
 
-fn parse_rule<'i>(rule: Rule, input: &'i str) -> Result<Pair<'i, Rule>, PestError<'i, Rule>> {
+fn parse_rule(rule: Rule, input: &str) -> Result<Pair<Rule>, PestError<Rule>> {
     Ok(VASMParser::parse(rule, input)?.next().unwrap())
 }
 
@@ -125,11 +125,5 @@ end:  HALT";
 
     let program = parse_and_assemble(input).unwrap();
 
-    assert_eq!(
-        program,
-        Program {
-            data: expected_data,
-            instructions: expected_instr
-        }
-    );
+    assert_eq!(program, Program::from(expected_data, expected_instr,));
 }

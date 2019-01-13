@@ -9,8 +9,8 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 enum Error {
+    VASM(vasm::Error),
     IO(std::io::Error),
-    VASM,
 }
 
 impl From<std::io::Error> for Error {
@@ -57,14 +57,13 @@ fn vasm(input: &str, output: Option<&str>) -> Result<(), Error> {
 
     // Perform parse
     // TODO: Proper error reporting
-    let program = vasm::parse_and_assemble(&input).map_err(|_e| Error::VASM)?;
-    let vex_program = vexfile::Program::from(program.data, program.instructions);
+    let program = vasm::parse_and_assemble(&input).map_err(Error::VASM)?;
 
     let output_path: PathBuf = output
         .map(PathBuf::from)
-        .unwrap_or_else(|| input_path.with_extension("vasm"));
+        .unwrap_or_else(|| input_path.with_extension("vex"));
 
     // Write output file
-    vexfile::write_file(output_path, &vex_program)?;
+    vexfile::write_file(output_path, &program)?;
     Ok(())
 }

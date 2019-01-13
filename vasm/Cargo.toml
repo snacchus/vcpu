@@ -7,10 +7,10 @@ edition = "2018"
 
 [dependencies]
 byteorder = "1"
-clap = "2"
+clap = "~2.32.0"
 matches = "0.1"
 num = "0.1"
-pest = "1.0"
-pest_derive = "1.0"
+pest = "2.1"
+pest_derive = "2.1"
 vcpu = { path = ".." }
 vexfile = { path = "../vexfile" }

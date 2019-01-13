@@ -12,19 +12,16 @@ use byteorder::ByteOrder;
 use self::core::{Core, TickResult};
 use super::{constants, Address, Endian, Immediate};
 
-#[inline]
-pub fn jmp_addr_i16(offset: i16) -> Immediate {
+pub const fn jmp_addr_i16(offset: i16) -> Immediate {
     offset * (constants::WORD_BYTES as i16)
 }
 
-#[inline]
-pub fn jmp_addr_i32(offset: i32) -> Address {
+pub const fn jmp_addr_i32(offset: i32) -> Address {
     offset * (constants::WORD_BYTES as i32)
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum ExitCode {
-    Unknown,         // Reason for shutdown unknown
     Halted,          // HALT instruction was executed (Normal shutdown)
     Terminated,      // External termination signal was sent
     DivisionByZero,  // Attempted integer division by zero
@@ -33,9 +30,10 @@ pub enum ExitCode {
     BadJump,         // Jump address was out of instruction memory range
     InvalidOpcode,   // Opcode or funct was not recognized
     EmptyProgram,    // Loaded program is empty
+    Unknown,         // Reason for shutdown unknown
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Error {
     InvalidProgram(usize),
 }

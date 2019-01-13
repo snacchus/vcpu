@@ -1,5 +1,5 @@
 pub mod error;
-pub use crate::error::*;
+pub use crate::error::{AssembleError, Error, ParseError};
 
 use byteorder::ByteOrder;
 use matches::*;
@@ -12,12 +12,7 @@ use std::mem;
 use std::num::ParseIntError;
 use std::str::FromStr;
 use vcpu::*;
-
-#[derive(Debug, PartialEq)]
-pub struct Program {
-    pub data: Vec<u8>,
-    pub instructions: Vec<u8>,
-}
+use vexfile::Program;
 
 type Endian = byteorder::LittleEndian;
 
@@ -43,13 +38,10 @@ enum ParsedInstruction<'i> {
     },
 }
 
-type ParseResult<'i, T> = std::result::Result<T, ParseError<'i>>;
+type ParseResult<T> = std::result::Result<T, ParseError>;
 type AssembleResult<T> = std::result::Result<T, AssembleError>;
 
-type Result<'i, T> = std::result::Result<T, error::Error<'i>>;
-
-#[cfg(debug_assertions)]
-const _GRAMMAR: &str = include_str!("vasm.pest");
+type Result<T> = std::result::Result<T, error::Error>;
 
 #[derive(Parser)]
 #[grammar = "vasm.pest"]
@@ -122,7 +114,7 @@ where
     }
 }
 
-fn process_int_list<'i, T>(pair: Pair<'i, Rule>, data: &mut DataVec) -> ParseResult<'i, ()>
+fn process_int_list<T>(pair: Pair<Rule>, data: &mut DataVec) -> ParseResult<()>
 where
     T: UnsignedFromStr + Num<FromStrRadixErr = ParseIntError>,
 {
@@ -146,7 +138,7 @@ where
     Ok(())
 }
 
-fn process_data_element<'i>(pair: Pair<'i, Rule>, data: &mut DataVec) -> Result<'i, ()> {
+fn process_data_element(pair: Pair<Rule>, data: &mut DataVec) -> Result<()> {
     debug_assert_matches!(pair.as_rule(), Rule::data_element);
     let inner = pair.into_inner().next().unwrap();
 
@@ -178,7 +170,7 @@ fn process_labeled_element<'i, F>(
     rule: Rule,
     len: u32,
     op: F,
-) -> Result<'i, ()>
+) -> Result<()>
 where
     F: FnOnce(Pair<'i, Rule>) -> Result<()>,
 {
@@ -219,7 +211,7 @@ fn process_data(pair: Pair<Rule>) -> Result<DataInfo> {
 
 fn process_enum_inner<'i, T: FromStr<Err = ParseEnumError>>(
     pair: &Pair<'i, Rule>,
-) -> ParseResult<'i, T> {
+) -> ParseResult<T> {
     pair.as_str().to_uppercase().parse().map_err(From::from)
 }
 
@@ -245,7 +237,7 @@ fn process_instruction<'i>(
     pair: Pair<'i, Rule>,
     instr: &mut InstrVec<'i>,
     data_labels: &LabelMap<'i>,
-) -> Result<'i, ()> {
+) -> Result<()> {
     let inner = pair.into_inner().next().unwrap();
     let rule = inner.as_rule();
     let mut pairs = inner.into_inner();
@@ -360,7 +352,7 @@ fn process_instruction<'i>(
 fn process_instructions<'i>(
     pair: Pair<'i, Rule>,
     data_labels: &LabelMap<'i>,
-) -> Result<'i, InstrInfo<'i>> {
+) -> Result<InstrInfo<'i>> {
     debug_assert_matches!(pair.as_rule(), Rule::instructions);
 
     let mut instructions = Vec::new();
@@ -456,10 +448,7 @@ fn assemble(pair: Pair<Rule>) -> Result<Program> {
         instruction_labels: instr_labels,
     };
 
-    Ok(Program {
-        data,
-        instructions: assembler.assemble_instructions()?,
-    })
+    Ok(Program::from(data, assembler.assemble_instructions()?))
 }
 
 fn parse(input: &str) -> ParseResult<Pair<Rule>> {
