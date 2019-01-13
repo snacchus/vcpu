@@ -1,7 +1,7 @@
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use std::fs::File;
 use std::io::prelude::*;
 use std::io::{BufReader, BufWriter};
-use std::fs::File;
 use std::path::Path;
 
 #[derive(Debug, PartialEq)]
@@ -12,16 +12,13 @@ pub struct Program {
 
 impl Program {
     pub fn from(data: Vec<u8>, instructions: Vec<u8>) -> Program {
-        Program {
-            data: data,
-            instructions: instructions
-        }
+        Program { data, instructions }
     }
 
     pub fn copy_from(data: &[u8], instructions: &[u8]) -> Program {
         Program {
             data: Vec::from(data),
-            instructions: Vec::from(instructions)
+            instructions: Vec::from(instructions),
         }
     }
 
@@ -60,7 +57,7 @@ pub trait ReadVexExt: Read + Sized {
     }
 }
 
-impl<R: Read + Sized> ReadVexExt for R { }
+impl<R: Read + Sized> ReadVexExt for R {}
 
 pub trait WriteVexExt: Write + Sized {
     fn write_vex(&mut self, program: &Program) -> std::io::Result<()> {
@@ -68,7 +65,7 @@ pub trait WriteVexExt: Write + Sized {
     }
 }
 
-impl<W: Write + Sized> WriteVexExt for W { }
+impl<W: Write + Sized> WriteVexExt for W {}
 
 pub fn read_file<P: AsRef<Path>>(path: P) -> std::io::Result<Program> {
     BufReader::new(File::open(path)?).read_vex()

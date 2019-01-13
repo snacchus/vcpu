@@ -1,6 +1,6 @@
 pub mod constants;
-pub mod processor;
 pub mod memory;
+pub mod processor;
 
 pub type Word = u32;
 pub type Immediate = i16;
@@ -8,13 +8,13 @@ pub type Address = i32;
 
 pub type Endian = byteorder::LittleEndian;
 
-pub use crate::processor::*;
 pub use crate::memory::*;
+pub use crate::processor::*;
 
 #[cfg(test)]
 mod tests {
-    use byteorder::ByteOrder;
     use super::*;
+    use byteorder::ByteOrder;
 
     #[test]
     fn wrapping_arithmetic() {
@@ -55,7 +55,7 @@ mod tests {
         test_program_e(program, ExitCode::Halted)
     }
 
-    fn transmute_vec(vec: Vec<Word>) -> Vec<u8> {
+    fn transmute_vec(vec: &[Word]) -> Vec<u8> {
         let mut byte_vec = vec![0; vec.len() * constants::WORD_BYTES as usize];
         Endian::write_u32_into(&vec[..], &mut byte_vec[..]);
         byte_vec
@@ -63,20 +63,24 @@ mod tests {
 
     #[test]
     fn program_halt() {
-        let program = transmute_vec(vec![
-            instr_i(OpCode::HALT, RegisterId::ZERO, RegisterId::ZERO, 0)
-        ]);
+        let program =
+            transmute_vec(&[instr_i(OpCode::HALT, RegisterId::ZERO, RegisterId::ZERO, 0)]);
 
         test_program(&program[..]);
     }
 
     #[test]
     fn program_add() {
-        let program = transmute_vec(vec![
+        let program = transmute_vec(&[
             instr_i(OpCode::LI, RegisterId::T0, RegisterId::ZERO, 42),
             instr_i(OpCode::LI, RegisterId::T1, RegisterId::ZERO, 64),
-            instr_alu(ALUFunct::ADD, RegisterId::T2, RegisterId::T0, RegisterId::T1),
-            instr_i(OpCode::HALT, RegisterId::ZERO, RegisterId::ZERO, 0)
+            instr_alu(
+                ALUFunct::ADD,
+                RegisterId::T2,
+                RegisterId::T0,
+                RegisterId::T1,
+            ),
+            instr_i(OpCode::HALT, RegisterId::ZERO, RegisterId::ZERO, 0),
         ]);
 
         let processor = test_program(&program[..]);
@@ -88,14 +92,24 @@ mod tests {
     fn program_loop() {
         let iterations = 32i32;
 
-        let program = transmute_vec(vec![
-            instr_i(OpCode::SLTI, RegisterId::T2, RegisterId::T0, iterations as i16),
-            instr_i(OpCode::BEZ, RegisterId::ZERO, RegisterId::T2, jmp_addr_i16(5)),
+        let program = transmute_vec(&[
+            instr_i(
+                OpCode::SLTI,
+                RegisterId::T2,
+                RegisterId::T0,
+                iterations as i16,
+            ),
+            instr_i(
+                OpCode::BEZ,
+                RegisterId::ZERO,
+                RegisterId::T2,
+                jmp_addr_i16(5),
+            ),
             instr_i(OpCode::SLLI, RegisterId::T1, RegisterId::T0, 2),
             instr_i(OpCode::SW, RegisterId::T0, RegisterId::T1, 0),
             instr_i(OpCode::ADDI, RegisterId::T0, RegisterId::T0, 1),
             instr_j(OpCode::JMP, jmp_addr_i32(-5)),
-            instr_i(OpCode::HALT, RegisterId::ZERO, RegisterId::ZERO, 0)
+            instr_i(OpCode::HALT, RegisterId::ZERO, RegisterId::ZERO, 0),
         ]);
 
         let processor = test_program(&program[..]);

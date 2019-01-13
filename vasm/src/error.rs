@@ -1,7 +1,7 @@
 use crate::Rule;
-use vcpu::ParseEnumError;
-use std::num::ParseIntError;
 use pest;
+use std::num::ParseIntError;
+use vcpu::ParseEnumError;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ParseError<'i> {
@@ -31,13 +31,13 @@ impl<'i> From<ParseEnumError> for ParseError<'i> {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum AssembleError {
-    Misc
+    Misc,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Error<'i> {
     Parse(ParseError<'i>),
-    Assemble(AssembleError)
+    Assemble(AssembleError),
 }
 
 impl<'i> From<ParseError<'i>> for Error<'i> {

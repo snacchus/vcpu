@@ -1,4 +1,4 @@
-use crate::{ Rule, VASMParser };
+use crate::{Rule, VASMParser};
 use ::pest::*;
 
 #[test]
@@ -251,7 +251,7 @@ fn instruction_i() {
         parser: VASMParser,
         input: "SLTI  $zErO,$RA ,-443",
         rule: Rule::instruction_i,
-        tokens: [ instruction_i(0, 21, [ 
+        tokens: [ instruction_i(0, 21, [
             opcode_i_sep(0, 6, [ opcode_i(0, 4) ]),
             register(6, 11, [ register_id(7, 11) ]),
             register(12, 15, [ register_id(13, 15) ]),
@@ -438,8 +438,7 @@ fn instructions() {
 
 #[test]
 fn program() {
-    let src =
-"# .data bla
+    let src = "# .data bla
 .data
 label: .block 9
 .instructions

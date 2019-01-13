@@ -1,16 +1,16 @@
 mod core;
 mod enums;
 
-use crate::memory::Storage;
 pub use self::enums::*;
+use crate::memory::Storage;
 
-use std::fmt;
 use std::error::Error as StdError;
+use std::fmt;
 
 use byteorder::ByteOrder;
 
-use super::{constants, Address, Immediate, Endian};
 use self::core::{Core, TickResult};
+use super::{constants, Address, Endian, Immediate};
 
 #[inline]
 pub fn jmp_addr_i16(offset: i16) -> Immediate {
@@ -22,7 +22,7 @@ pub fn jmp_addr_i32(offset: i32) -> Address {
     offset * (constants::WORD_BYTES as i32)
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum ExitCode {
     Unknown,         // Reason for shutdown unknown
     Halted,          // HALT instruction was executed (Normal shutdown)
@@ -37,7 +37,7 @@ pub enum ExitCode {
 
 #[derive(Debug)]
 pub enum Error {
-    InvalidProgram(usize)
+    InvalidProgram(usize),
 }
 
 impl fmt::Display for Error {
@@ -58,9 +58,9 @@ impl StdError for Error {
 
 #[derive(Clone, Copy)]
 pub union Register {
-    i : i32,
-    u : u32,
-    f : f32,
+    i: i32,
+    u: u32,
+    f: f32,
 }
 
 impl Register {
@@ -68,22 +68,16 @@ impl Register {
         Register { u: 0 }
     }
 
-    pub fn i(&self) -> i32 {
-        unsafe {
-            self.i
-        }
+    pub fn i(self) -> i32 {
+        unsafe { self.i }
     }
 
-    pub fn u(&self) -> u32 {
-        unsafe {
-            self.u
-        }
+    pub fn u(self) -> u32 {
+        unsafe { self.u }
     }
 
-    pub fn f(&self) -> f32 {
-        unsafe {
-            self.f
-        }
+    pub fn f(self) -> f32 {
+        unsafe { self.f }
     }
 
     fn set_i(&mut self, value: i32) {
@@ -106,7 +100,7 @@ pub struct Processor {
 
 impl Processor {
     pub fn new(storage: Box<dyn Storage>) -> Processor {
-        Processor{ 
+        Processor {
             core: Core::new(storage),
             instructions: Vec::new(),
         }
@@ -142,15 +136,16 @@ impl Processor {
 
         loop {
             let pc = program_counter as usize;
-            let instruction = Endian::read_u32(&self.instructions[pc..(pc + constants::WORD_BYTES as usize)]);
-            
+            let instruction =
+                Endian::read_u32(&self.instructions[pc..(pc + constants::WORD_BYTES as usize)]);
+
             let tick_result = self.core.tick(instruction, program_counter);
 
             match tick_result {
                 TickResult::Next => {
                     let new_pc = program_counter.wrapping_add(constants::WORD_BYTES);
                     program_counter = if new_pc < instr_len { new_pc } else { 0 };
-                },
+                }
                 TickResult::Jump(new_pc) => {
                     if new_pc >= instr_len {
                         return ExitCode::BadJump;
@@ -159,7 +154,7 @@ impl Processor {
                     } else {
                         program_counter = new_pc;
                     }
-                },
+                }
                 TickResult::Stop(exit_code) => {
                     return exit_code;
                 }

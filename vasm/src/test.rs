@@ -1,8 +1,8 @@
-use crate::{ Program, VASMParser, Rule, ParsedInstruction, JumpTarget, parse_and_assemble };
-use vcpu::*;
+use crate::{parse_and_assemble, JumpTarget, ParsedInstruction, Program, Rule, VASMParser};
+use ::pest::{iterators::Pair, Error as PestError, Parser};
 use byteorder::ByteOrder;
-use ::pest::{ Error as PestError, Parser, iterators::Pair };
 use std::collections::HashMap;
+use vcpu::*;
 
 mod pest;
 
@@ -20,8 +20,7 @@ fn parse_rule<'i>(rule: Rule, input: &'i str) -> Result<Pair<'i, Rule>, PestErro
 
 #[test]
 fn process_instructions_add() {
-    let input = 
-".instructions
+    let input = ".instructions
 LI $t0, 23
 LI $t1, 34
 ADD $t0, $t0, $t1
@@ -30,14 +29,19 @@ HALT";
     let expected_instr = vec![
         ParsedInstruction::Complete(instr_i(OpCode::LI, RegisterId::T0, RegisterId::ZERO, 23)),
         ParsedInstruction::Complete(instr_i(OpCode::LI, RegisterId::T1, RegisterId::ZERO, 34)),
-        ParsedInstruction::Complete(instr_alu(ALUFunct::ADD, RegisterId::T0, RegisterId::T0, RegisterId::T1)),
+        ParsedInstruction::Complete(instr_alu(
+            ALUFunct::ADD,
+            RegisterId::T0,
+            RegisterId::T0,
+            RegisterId::T1,
+        )),
         ParsedInstruction::Complete(instr_i(OpCode::HALT, RegisterId::ZERO, RegisterId::ZERO, 0)),
     ];
 
     let expected_labels = HashMap::new();
 
     let pair = parse_rule(Rule::instructions, input).unwrap();
-    let (instr, labels) = super::process_instructions(pair, HashMap::new()).unwrap();
+    let (instr, labels) = super::process_instructions(pair, &HashMap::new()).unwrap();
 
     assert_eq!(instr, expected_instr);
     assert_eq!(labels, expected_labels);
@@ -45,8 +49,7 @@ HALT";
 
 #[test]
 fn process_instructions_loop() {
-    let input =
-".instructions
+    let input = ".instructions
 loop: SLTI $t2, $t0, 32
       BEZ  $t2, end
       SLLI $t1, $t0, 2
@@ -57,11 +60,18 @@ end:  HALT";
 
     let expected_instr = vec![
         ParsedInstruction::Complete(instr_i(OpCode::SLTI, RegisterId::T2, RegisterId::T0, 32)),
-        ParsedInstruction::Branch{ opcode: OpCode::BEZ, rs1: RegisterId::T2, target: JumpTarget::Label("end") },
+        ParsedInstruction::Branch {
+            opcode: OpCode::BEZ,
+            rs1: RegisterId::T2,
+            target: JumpTarget::Label("end"),
+        },
         ParsedInstruction::Complete(instr_i(OpCode::SLLI, RegisterId::T1, RegisterId::T0, 2)),
         ParsedInstruction::Complete(instr_i(OpCode::SW, RegisterId::T0, RegisterId::T1, 0)),
         ParsedInstruction::Complete(instr_i(OpCode::ADDI, RegisterId::T0, RegisterId::T0, 1)),
-        ParsedInstruction::Jump{ opcode: OpCode::JMP, target: JumpTarget::Label("loop") },
+        ParsedInstruction::Jump {
+            opcode: OpCode::JMP,
+            target: JumpTarget::Label("loop"),
+        },
         ParsedInstruction::Complete(instr_i(OpCode::HALT, RegisterId::ZERO, RegisterId::ZERO, 0)),
     ];
 
@@ -71,7 +81,7 @@ end:  HALT";
     ];
 
     let pair = parse_rule(Rule::instructions, input).unwrap();
-    let (instr, labels) = super::process_instructions(pair, HashMap::new()).unwrap();
+    let (instr, labels) = super::process_instructions(pair, &HashMap::new()).unwrap();
 
     assert_eq!(instr, expected_instr);
     assert_eq!(labels, expected_labels);
@@ -85,8 +95,7 @@ fn transmute_vec(vec: Vec<Word>) -> Vec<u8> {
 
 #[test]
 fn assemble_loop() {
-    let input = 
-".data
+    let input = ".data
 .block 128
 .instructions
 loop: SLTI $t2, $t0, 32
@@ -101,15 +110,26 @@ end:  HALT";
 
     let expected_instr = transmute_vec(vec![
         instr_i(OpCode::SLTI, RegisterId::T2, RegisterId::T0, 32),
-        instr_i(OpCode::BEZ, RegisterId::ZERO, RegisterId::T2, jmp_addr_i16(5)),
+        instr_i(
+            OpCode::BEZ,
+            RegisterId::ZERO,
+            RegisterId::T2,
+            jmp_addr_i16(5),
+        ),
         instr_i(OpCode::SLLI, RegisterId::T1, RegisterId::T0, 2),
         instr_i(OpCode::SW, RegisterId::T0, RegisterId::T1, 0),
         instr_i(OpCode::ADDI, RegisterId::T0, RegisterId::T0, 1),
         instr_j(OpCode::JMP, jmp_addr_i32(-5)),
-        instr_i(OpCode::HALT, RegisterId::ZERO, RegisterId::ZERO, 0)
+        instr_i(OpCode::HALT, RegisterId::ZERO, RegisterId::ZERO, 0),
     ]);
 
     let program = parse_and_assemble(input).unwrap();
 
-    assert_eq!(program, Program { data: expected_data, instructions: expected_instr });
+    assert_eq!(
+        program,
+        Program {
+            data: expected_data,
+            instructions: expected_instr
+        }
+    );
 }
