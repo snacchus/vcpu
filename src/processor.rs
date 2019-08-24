@@ -2,7 +2,7 @@ mod core;
 mod enums;
 
 pub use self::enums::*;
-use crate::memory::Storage;
+use crate::memory::StorageMut;
 
 use std::error::Error as StdError;
 use std::fmt;
@@ -10,7 +10,7 @@ use std::fmt;
 use byteorder::ByteOrder;
 
 use self::core::{Core, TickResult};
-use super::{constants, Address, Endian, Immediate};
+use super::{constants, Address, Endian, Immediate, Word};
 
 pub const fn jmp_addr_i16(offset: i16) -> Immediate {
     offset * (constants::WORD_BYTES as i16)
@@ -18,6 +18,12 @@ pub const fn jmp_addr_i16(offset: i16) -> Immediate {
 
 pub const fn jmp_addr_i32(offset: i32) -> Address {
     offset * (constants::WORD_BYTES as i32)
+}
+
+pub fn program_from_words(vec: &[Word]) -> Vec<u8> {
+    let mut byte_vec = vec![0; vec.len() * constants::WORD_BYTES as usize];
+    Endian::write_u32_into(&vec[..], &mut byte_vec[..]);
+    byte_vec
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
@@ -94,26 +100,26 @@ impl Register {
 pub struct Processor {
     core: Core,
     instructions: Vec<u8>,
+    program_counter: u32,
 }
 
 impl Processor {
-    pub fn new(storage: Box<dyn Storage>) -> Processor {
-        Processor {
-            core: Core::new(storage),
-            instructions: Vec::new(),
-        }
-    }
-
-    pub fn load_instructions(&mut self, instructions: &[u8]) -> Result<(), Error> {
+    pub fn construct<S: StorageMut + 'static>(
+        instructions: &[u8],
+        storage: S,
+    ) -> Result<Processor, Error> {
         if instructions.len() as u32 % constants::WORD_BYTES != 0 {
             Err(Error::InvalidProgram(instructions.len()))
         } else {
-            self.instructions = Vec::from(instructions);
-            Ok(())
+            Ok(Processor {
+                core: Core::new(storage),
+                instructions: Vec::from(instructions),
+                program_counter: 0u32,
+            })
         }
     }
 
-    pub fn storage(&self) -> &dyn Storage {
+    pub fn storage(&self) -> &dyn StorageMut {
         self.core.storage()
     }
 
@@ -121,41 +127,43 @@ impl Processor {
         self.core.register(id)
     }
 
-    pub fn run(&mut self) -> ExitCode {
-        self.core.zero_registers();
-
+    pub fn tick(&mut self) -> Option<ExitCode> {
         if self.instructions.is_empty() {
-            return ExitCode::EmptyProgram;
-        }
+            Some(ExitCode::EmptyProgram)
+        } else {
+            let instr_len = self.instructions.len() as u32;
 
-        let instr_len = self.instructions.len() as u32;
-
-        let mut program_counter = 0u32;
-
-        loop {
-            let pc = program_counter as usize;
+            let pc = self.program_counter as usize;
             let instruction =
                 Endian::read_u32(&self.instructions[pc..(pc + constants::WORD_BYTES as usize)]);
 
-            let tick_result = self.core.tick(instruction, program_counter);
+            let tick_result = self.core.tick(instruction, self.program_counter);
 
             match tick_result {
                 TickResult::Next => {
-                    let new_pc = program_counter.wrapping_add(constants::WORD_BYTES);
-                    program_counter = if new_pc < instr_len { new_pc } else { 0 };
+                    let new_pc = self.program_counter.wrapping_add(constants::WORD_BYTES);
+                    self.program_counter = if new_pc < instr_len { new_pc } else { 0 };
+                    None
                 }
                 TickResult::Jump(new_pc) => {
                     if new_pc >= instr_len {
-                        return ExitCode::BadJump;
+                        Some(ExitCode::BadJump)
                     } else if (new_pc % (constants::WORD_BYTES as u32)) != 0 {
-                        return ExitCode::BadAlignment;
+                        Some(ExitCode::BadAlignment)
                     } else {
-                        program_counter = new_pc;
+                        self.program_counter = new_pc;
+                        None
                     }
                 }
-                TickResult::Stop(exit_code) => {
-                    return exit_code;
-                }
+                TickResult::Stop(exit_code) => Some(exit_code),
+            }
+        }
+    }
+
+    pub fn run(&mut self) -> ExitCode {
+        loop {
+            if let Some(exit_code) = self.tick() {
+                return exit_code;
             }
         }
     }

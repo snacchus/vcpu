@@ -14,7 +14,6 @@ pub use crate::processor::*;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use byteorder::ByteOrder;
 
     #[test]
     fn wrapping_arithmetic() {
@@ -29,10 +28,9 @@ mod tests {
 
     #[allow(dead_code)]
     fn test_program_me(mem_size: u32, program: &[u8], expected_code: ExitCode) -> Processor {
-        let memory = Box::new(Memory::new(mem_size));
-        let mut processor = Processor::new(memory);
+        let memory = vec![0; mem_size as usize];
+        let mut processor = Processor::construct(program, memory).unwrap();
 
-        processor.load_instructions(program).unwrap();
         let exit_code = processor.run();
 
         assert_eq!(exit_code, expected_code);
@@ -55,23 +53,17 @@ mod tests {
         test_program_e(program, ExitCode::Halted)
     }
 
-    fn transmute_vec(vec: &[Word]) -> Vec<u8> {
-        let mut byte_vec = vec![0; vec.len() * constants::WORD_BYTES as usize];
-        Endian::write_u32_into(&vec[..], &mut byte_vec[..]);
-        byte_vec
-    }
-
     #[test]
     fn program_halt() {
         let program =
-            transmute_vec(&[instr_i(OpCode::HALT, RegisterId::ZERO, RegisterId::ZERO, 0)]);
+            program_from_words(&[instr_i(OpCode::HALT, RegisterId::ZERO, RegisterId::ZERO, 0)]);
 
         test_program(&program[..]);
     }
 
     #[test]
     fn program_add() {
-        let program = transmute_vec(&[
+        let program = program_from_words(&[
             instr_i(OpCode::LI, RegisterId::T0, RegisterId::ZERO, 42),
             instr_i(OpCode::LI, RegisterId::T1, RegisterId::ZERO, 64),
             instr_alu(
@@ -92,7 +84,7 @@ mod tests {
     fn program_loop() {
         let iterations = 32i32;
 
-        let program = transmute_vec(&[
+        let program = program_from_words(&[
             instr_i(
                 OpCode::SLTI,
                 RegisterId::T2,

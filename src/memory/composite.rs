@@ -1,4 +1,4 @@
-use super::Storage;
+use super::{Storage, StorageMut};
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 
@@ -14,11 +14,11 @@ pub enum MountError {
     KeyAlreadyExists,
 }
 
-type AdressedFragment = (u32, Box<dyn Storage>);
+type AdressedFragment = (u32, Box<dyn StorageMut>);
 
-/// Represents a [`Storage`] which consists of "fragments" instead of one contiguous block of memory.
+/// Represents a [`StorageMut`] which consists of "fragments" instead of one contiguous block of memory.
 ///
-/// Fragments are simply represented by [`Storage`] trait objects and can be "mounted" at a certain address.
+/// Fragments are simply represented by [`StorageMut`] trait objects and can be "mounted" at a certain address.
 /// This can be used to simulate hardware devices which are bound to certain address ranges, without wasting physical memory on unused ranges.
 ///
 /// The length of a `CompositeMemory` is equal to the last fragment's address plus its length.
@@ -26,7 +26,7 @@ type AdressedFragment = (u32, Box<dyn Storage>);
 /// Nesting `CompositeMemory` objects is possible, though not recommended since the speed of lookups will suffer.
 /// Flattening the nested objects into one `CompositeMemory` instance is preferable.
 ///
-/// [`Storage`]: ../trait.Storage.html
+/// [`StorageMut`]: ../trait.StorageMut.html
 #[derive(Default)]
 pub struct CompositeMemory {
     fragments: Vec<AdressedFragment>,
@@ -55,12 +55,12 @@ impl CompositeMemory {
     /// # Examples
     /// Successful mount:
     /// ```
-    /// use vcpu::{Storage, Memory};
+    /// use vcpu::Storage;
     /// use vcpu::memory::composite::CompositeMemory;
     ///
     /// let mut memory = CompositeMemory::new();
     /// assert_eq!(
-    ///     memory.mount(16, "f0", Box::new(Memory::from(&[0, 1, 2, 3][..]))),
+    ///     memory.mount(16, "f0", Box::new([0u8, 1u8, 2u8, 3u8])),
     ///     Ok(())
     /// );
     /// assert_eq!(memory.read_word(16), Ok(50462976));
@@ -69,32 +69,32 @@ impl CompositeMemory {
     ///
     /// Consecutive fragments:
     /// ```
-    /// use vcpu::{Storage, Memory};
+    /// use vcpu::Storage;
     /// use vcpu::memory::composite::{CompositeMemory, MountError};
     ///
     /// let mut memory = CompositeMemory::new();
     /// assert_eq!(
-    ///     memory.mount(0, "f0", Box::new(Memory::new(16))),
+    ///     memory.mount(0, "f0", Box::new([0u8; 16])),
     ///     Ok(())
     /// );
     /// assert_eq!(
-    ///     memory.mount(16, "f1", Box::new(Memory::new(16))),
+    ///     memory.mount(16, "f1", Box::new([0u8; 16])),
     ///     Ok(())
     /// );
     /// ```
     ///
     /// Intersecting fragments:
     /// ```
-    /// use vcpu::{Storage, Memory};
+    /// use vcpu::Storage;
     /// use vcpu::memory::composite::{CompositeMemory, MountError};
     ///
     /// let mut memory = CompositeMemory::new();
     /// assert_eq!(
-    ///     memory.mount(0, "f0", Box::new(Memory::new(16))),
+    ///     memory.mount(0, "f0", Box::new([0u8; 16])),
     ///     Ok(())
     /// );
     /// assert_eq!(
-    ///     memory.mount(15, "f1", Box::new(Memory::new(16))),
+    ///     memory.mount(15, "f1", Box::new([0u8; 16])),
     ///     Err(MountError::FragmentIntersection)
     /// );
     /// ```
@@ -102,7 +102,7 @@ impl CompositeMemory {
         &mut self,
         address: u32,
         key: &str,
-        fragment: Box<dyn Storage>,
+        fragment: Box<dyn StorageMut>,
     ) -> Result<(), MountError> {
         if self.registry.contains_key(key) {
             return Err(MountError::KeyAlreadyExists);
@@ -124,19 +124,19 @@ impl CompositeMemory {
     ///
     /// # Examples
     /// ```
-    /// use vcpu::{Storage, Memory};
+    /// use vcpu::Storage;
     /// use vcpu::memory::composite::{CompositeMemory, MountError};
     ///
     /// let mut memory = CompositeMemory::new();
     /// assert_eq!(
-    ///     memory.mount(0, "f0", Box::new(Memory::new(16))),
+    ///     memory.mount(0, "f0", Box::new([0u8; 16])),
     ///     Ok(())
     /// );
     /// assert!(memory.unmount("something").is_none());
     /// assert!(memory.unmount("f0").is_some());
     /// assert!(memory.unmount("f0").is_none());
     /// ```
-    pub fn unmount(&mut self, key: &str) -> Option<Box<dyn Storage>> {
+    pub fn unmount(&mut self, key: &str) -> Option<Box<dyn StorageMut>> {
         self.registry
             .remove(key)
             .map(|i| self.fragments.remove(i).1)
@@ -171,7 +171,7 @@ impl CompositeMemory {
         }
     }
 
-    fn get_fragment(&self, address: u32) -> Option<(&dyn Storage, u32)> {
+    fn get_fragment(&self, address: u32) -> Option<(&dyn StorageMut, u32)> {
         let index = self.get_index(address)?;
         if index >= self.fragments.len() {
             return None;
@@ -181,7 +181,7 @@ impl CompositeMemory {
         Some((fragment.deref(), address - frag_addr))
     }
 
-    fn get_fragment_mut(&mut self, address: u32) -> Option<(&mut dyn Storage, u32)> {
+    fn get_fragment_mut(&mut self, address: u32) -> Option<(&mut dyn StorageMut, u32)> {
         let index = self.get_index(address)?;
         if index >= self.fragments.len() {
             return None;
@@ -214,10 +214,12 @@ impl Storage for CompositeMemory {
         let (fragment, local_address) = self.get_fragment(address).ok_or(())?;
         fragment.borrow_slice(local_address, length)
     }
+}
 
-    fn borrow_slice_mut(&mut self, address: u32, length: u32) -> Result<&mut [u8], ()> {
+impl StorageMut for CompositeMemory {
+    fn write(&mut self, address: u32, size: u32, value: u32) -> Result<(), ()> {
         let (fragment, local_address) = self.get_fragment_mut(address).ok_or(())?;
-        fragment.borrow_slice_mut(local_address, length)
+        fragment.write(local_address, size, value)
     }
 }
 
@@ -225,18 +227,12 @@ impl Storage for CompositeMemory {
 fn find_mount_index() {
     let mut memory = CompositeMemory::new();
     assert_eq!(memory.find_mount_index(0, 16), Ok(0));
-    assert_eq!(
-        memory.mount(0, "f0", Box::new(super::Memory::new(16))),
-        Ok(())
-    );
+    assert_eq!(memory.mount(0, "f0", Box::new(vec![0; 16])), Ok(()));
     assert_eq!(
         memory.find_mount_index(8, 24),
         Err(MountError::FragmentIntersection)
     );
-    assert_eq!(
-        memory.mount(20, "f1", Box::new(super::Memory::new(16))),
-        Ok(())
-    );
+    assert_eq!(memory.mount(20, "f1", Box::new(vec![0; 16])), Ok(()));
     assert_eq!(memory.find_mount_index(16, 20), Ok(1));
     assert_eq!(memory.find_mount_index(18, 20), Ok(1));
     assert_eq!(memory.find_mount_index(40, 44), Ok(2));

@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::prelude::Read;
 use std::io::BufReader;
 use std::path::Path;
-use vcpu::{ExitCode, Memory, Processor};
+use vcpu::{ExitCode, Processor};
 use vexfile::Program;
 
 #[derive(Debug)]
@@ -20,14 +20,11 @@ impl From<std::io::Error> for Error {
 
 pub fn run_program(program: &Program, mem_size: u32) -> Result<(Processor, ExitCode), Error> {
     let total_mem_size = program.data().len() as u32 + mem_size;
-    let memory = Box::new(Memory::new(total_mem_size));
+    let memory = vec![0; total_mem_size as usize];
 
-    let mut processor = Processor::new(memory);
+    let mut processor =
+        Processor::construct(program.instructions(), memory).map_err(Error::VCPU)?;
 
-    processor
-        .load_instructions(program.instructions())
-        .map_err(Error::VCPU)?;
-        
     let exit_code = processor.run();
 
     Ok((processor, exit_code))

@@ -2,7 +2,7 @@ use num::FromPrimitive;
 use std::num::Wrapping;
 use std::ops::{Deref, DerefMut};
 
-use super::super::memory::Storage;
+use super::super::memory::StorageMut;
 use super::super::{constants, Word};
 use super::{register_index, ALUFunct, ExitCode, OpCode, Register, RegisterId};
 
@@ -14,26 +14,20 @@ pub enum TickResult {
 
 pub struct Core {
     registers: [Register; constants::REGISTER_COUNT],
-    storage: Box<dyn Storage>,
+    storage: Box<dyn StorageMut>,
 }
 
 impl Core {
     /// Constructs a new Core object.
-    pub fn new(storage: Box<dyn Storage>) -> Core {
+    pub fn new<S: StorageMut + 'static>(storage: S) -> Core {
         Core {
             registers: [Register::new(); constants::REGISTER_COUNT],
-            storage,
+            storage: Box::new(storage),
         }
     }
 
-    pub fn storage(&self) -> &dyn Storage {
+    pub fn storage(&self) -> &dyn StorageMut {
         self.storage.deref()
-    }
-
-    pub fn zero_registers(&mut self) {
-        for i in 0..constants::REGISTER_COUNT {
-            self.registers[i] = Register::new();
-        }
     }
 
     pub fn register(&self, id: RegisterId) -> &Register {
