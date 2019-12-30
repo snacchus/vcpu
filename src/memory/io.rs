@@ -101,17 +101,16 @@ mod tests {
             },
         );
 
-        let memory = IOMemory::new(16, handler);
-
         let program = program_from_words(&[
             instr_i(OpCode::LI, RegisterId::T0, RegisterId::ZERO, 923),
             instr_i(OpCode::SW, RegisterId::T0, RegisterId::ZERO, 4),
             instr_i(OpCode::HALT, RegisterId::ZERO, RegisterId::ZERO, 0),
         ]);
 
-        let mut processor = Processor::construct(&program, memory).unwrap();
+        let mut processor = Processor::default();
+        let mut memory = IOMemory::new(16, handler);
 
-        assert_eq!(processor.run(), ExitCode::Halted);
+        assert_eq!(processor.run(&program, &mut memory), ExitCode::Halted);
 
         let (address, value) = result.get();
 

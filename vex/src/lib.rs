@@ -7,7 +7,6 @@ use vexfile::Program;
 
 #[derive(Debug)]
 pub enum Error {
-    VCPU(vcpu::Error),
     VASM(vasm::Error),
     IO(std::io::Error),
 }
@@ -20,12 +19,11 @@ impl From<std::io::Error> for Error {
 
 pub fn run_program(program: &Program, mem_size: u32) -> Result<(Processor, ExitCode), Error> {
     let total_mem_size = program.data().len() as u32 + mem_size;
-    let memory = vec![0; total_mem_size as usize];
+    let mut memory = vec![0; total_mem_size as usize];
 
-    let mut processor =
-        Processor::construct(program.instructions(), memory).map_err(Error::VCPU)?;
+    let mut processor = Processor::default();
 
-    let exit_code = processor.run();
+    let exit_code = processor.run(program.instructions(), &mut memory);
 
     Ok((processor, exit_code))
 }

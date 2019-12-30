@@ -1,3 +1,5 @@
+#![allow(clippy::cognitive_complexity)]
+
 use crate::{Rule, VASMParser};
 use ::pest::*;
 

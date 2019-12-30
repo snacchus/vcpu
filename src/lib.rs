@@ -1,6 +1,8 @@
 pub mod constants;
+mod enums;
 pub mod memory;
-pub mod processor;
+mod processor;
+mod register;
 
 pub type Word = u32;
 pub type Immediate = i16;
@@ -8,8 +10,10 @@ pub type Address = i32;
 
 pub type Endian = byteorder::LittleEndian;
 
+pub use crate::enums::*;
 pub use crate::memory::*;
 pub use crate::processor::*;
+pub use crate::register::*;
 
 #[cfg(test)]
 mod tests {
@@ -27,29 +31,33 @@ mod tests {
     }
 
     #[allow(dead_code)]
-    fn test_program_me(mem_size: u32, program: &[u8], expected_code: ExitCode) -> Processor {
-        let memory = vec![0; mem_size as usize];
-        let mut processor = Processor::construct(program, memory).unwrap();
+    fn test_program_me(
+        mem_size: u32,
+        program: &[u8],
+        expected_code: ExitCode,
+    ) -> (Processor, Vec<u8>) {
+        let mut processor = Processor::default();
+        let mut memory = vec![0; mem_size as usize];
 
-        let exit_code = processor.run();
+        let exit_code = processor.run(&program, &mut memory);
 
         assert_eq!(exit_code, expected_code);
 
-        processor
+        (processor, memory)
     }
 
     #[allow(dead_code)]
-    fn test_program_e(program: &[u8], expected_code: ExitCode) -> Processor {
+    fn test_program_e(program: &[u8], expected_code: ExitCode) -> (Processor, Vec<u8>) {
         test_program_me(1024, program, expected_code)
     }
 
     #[allow(dead_code)]
-    fn test_program_m(mem_size: u32, program: &[u8]) -> Processor {
+    fn test_program_m(mem_size: u32, program: &[u8]) -> (Processor, Vec<u8>) {
         test_program_me(mem_size, program, ExitCode::Halted)
     }
 
     #[allow(dead_code)]
-    fn test_program(program: &[u8]) -> Processor {
+    fn test_program(program: &[u8]) -> (Processor, Vec<u8>) {
         test_program_e(program, ExitCode::Halted)
     }
 
@@ -75,7 +83,7 @@ mod tests {
             instr_i(OpCode::HALT, RegisterId::ZERO, RegisterId::ZERO, 0),
         ]);
 
-        let processor = test_program(&program[..]);
+        let (processor, _) = test_program(&program[..]);
 
         assert_eq!(processor.register(RegisterId::T2).i(), 106);
     }
@@ -104,8 +112,7 @@ mod tests {
             instr_i(OpCode::HALT, RegisterId::ZERO, RegisterId::ZERO, 0),
         ]);
 
-        let processor = test_program(&program[..]);
-        let storage = processor.storage();
+        let (_, storage) = test_program(&program[..]);
 
         for i in 0..iterations {
             let value = storage.read_word(i as u32 * constants::WORD_BYTES).unwrap() as i32;

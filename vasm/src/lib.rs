@@ -79,11 +79,11 @@ fn process_int_lit<T: Num<FromStrRadixErr = ParseIntError>>(
     pair: Pair<Rule>,
     base: u32,
 ) -> ParseResult<T> {
-    T::from_str_radix(pair.into_span().as_str(), base).map_err(From::from)
+    T::from_str_radix(pair.as_span().as_str(), base).map_err(From::from)
 }
 
 fn process_uint_lit<T: UnsignedFromStr>(pair: Pair<Rule>, base: u32) -> ParseResult<T> {
-    T::unsigned_from_str_radix(pair.into_span().as_str(), base)
+    T::unsigned_from_str_radix(pair.as_span().as_str(), base)
 }
 
 fn process_uint<T>(pair: Pair<Rule>) -> ParseResult<T>
@@ -178,7 +178,7 @@ where
     let first = pairs.next().unwrap();
     let r = first.as_rule();
     if r == Rule::label {
-        let label_str = first.into_inner().next().unwrap().into_span().as_str();
+        let label_str = first.into_inner().next().unwrap().as_span().as_str();
         labels.insert(label_str, len);
         op(pairs.next().unwrap())?;
     } else if r == rule {
@@ -281,7 +281,7 @@ fn process_instruction<'i>(
         Rule::instruction_la => {
             pairs.next();
             let rd = process_enum(pairs.next().unwrap())?;
-            let label = pairs.next().unwrap().into_span().as_str();
+            let label = pairs.next().unwrap().as_span().as_str();
             let address = data_labels.get(label).ok_or(AssembleError::Misc)?;
             instr.push(ParsedInstruction::Complete(instr_i(
                 OpCode::LI,
