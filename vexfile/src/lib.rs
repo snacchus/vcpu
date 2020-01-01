@@ -74,3 +74,6 @@ pub fn read_file<P: AsRef<Path>>(path: P) -> std::io::Result<Program> {
 pub fn write_file<P: AsRef<Path>>(path: P, program: &Program) -> std::io::Result<()> {
     BufWriter::new(File::create(path)?).write_vex(program)
 }
+
+#[cfg(test)]
+mod test;

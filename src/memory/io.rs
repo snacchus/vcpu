@@ -29,8 +29,8 @@ impl<H: IOHandler> Storage for IOMemory<H> {
         self.memory.check_range(address, length)
     }
 
-    fn borrow_slice(&self, address: u32, length: u32) -> Result<&[u8], ()> {
-        self.memory.borrow_slice(address, length)
+    fn read(&self, address: u32, size: u32) -> Result<u32, ()> {
+        self.memory.read(address, size)
     }
 }
 

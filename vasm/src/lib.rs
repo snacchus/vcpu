@@ -437,7 +437,7 @@ impl<'i> Assembler<'i> {
     }
 }
 
-fn assemble(pair: Pair<Rule>) -> Result<Program> {
+fn assemble_parsed(pair: Pair<Rule>) -> Result<Program> {
     let mut pairs = pair.into_inner();
 
     let (data, data_labels) = process_data(pairs.next().unwrap())?;
@@ -455,8 +455,8 @@ fn parse(input: &str) -> ParseResult<Pair<Rule>> {
     Ok(VASMParser::parse(Rule::program, input)?.next().unwrap())
 }
 
-pub fn parse_and_assemble(input: &str) -> Result<Program> {
-    assemble(parse(input)?)
+pub fn assemble(input: &str) -> Result<Program> {
+    assemble_parsed(parse(input)?)
 }
 
 #[cfg(test)]

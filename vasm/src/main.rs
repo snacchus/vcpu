@@ -57,7 +57,7 @@ fn vasm(input: &str, output: Option<&str>) -> Result<(), Error> {
 
     // Perform parse
     // TODO: Proper error reporting
-    let program = vasm::parse_and_assemble(&input).map_err(Error::VASM)?;
+    let program = vasm::assemble(&input).map_err(Error::VASM)?;
 
     let output_path: PathBuf = output
         .map(PathBuf::from)

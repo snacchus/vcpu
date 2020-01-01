@@ -60,7 +60,7 @@ impl CompositeMemory {
     ///
     /// let mut memory = CompositeMemory::new();
     /// assert_eq!(
-    ///     memory.mount(16, "f0", Box::new([0u8, 1u8, 2u8, 3u8])),
+    ///     memory.mount(16, "f0", [0u8, 1u8, 2u8, 3u8]),
     ///     Ok(())
     /// );
     /// assert_eq!(memory.read_word(16), Ok(50462976));
@@ -74,11 +74,11 @@ impl CompositeMemory {
     ///
     /// let mut memory = CompositeMemory::new();
     /// assert_eq!(
-    ///     memory.mount(0, "f0", Box::new([0u8; 16])),
+    ///     memory.mount(0, "f0", [0u8; 16]),
     ///     Ok(())
     /// );
     /// assert_eq!(
-    ///     memory.mount(16, "f1", Box::new([0u8; 16])),
+    ///     memory.mount(16, "f1", [0u8; 16]),
     ///     Ok(())
     /// );
     /// ```
@@ -90,19 +90,19 @@ impl CompositeMemory {
     ///
     /// let mut memory = CompositeMemory::new();
     /// assert_eq!(
-    ///     memory.mount(0, "f0", Box::new([0u8; 16])),
+    ///     memory.mount(0, "f0", [0u8; 16]),
     ///     Ok(())
     /// );
     /// assert_eq!(
-    ///     memory.mount(15, "f1", Box::new([0u8; 16])),
+    ///     memory.mount(15, "f1", [0u8; 16]),
     ///     Err(MountError::FragmentIntersection)
     /// );
     /// ```
-    pub fn mount(
+    pub fn mount<S: StorageMut + 'static>(
         &mut self,
         address: u32,
         key: &str,
-        fragment: Box<dyn StorageMut>,
+        fragment: S,
     ) -> Result<(), MountError> {
         if self.registry.contains_key(key) {
             return Err(MountError::KeyAlreadyExists);
@@ -113,7 +113,7 @@ impl CompositeMemory {
             .expect("Fragment upper bound exceeds valid address range.");
         let index = self.find_mount_index(address, upper_bound)?;
 
-        self.fragments.insert(index, (address, fragment));
+        self.fragments.insert(index, (address, Box::new(fragment)));
         self.registry.insert(key.to_string(), index);
 
         Ok(())
@@ -129,7 +129,7 @@ impl CompositeMemory {
     ///
     /// let mut memory = CompositeMemory::new();
     /// assert_eq!(
-    ///     memory.mount(0, "f0", Box::new([0u8; 16])),
+    ///     memory.mount(0, "f0", [0u8; 16]),
     ///     Ok(())
     /// );
     /// assert!(memory.unmount("something").is_none());
@@ -210,9 +210,9 @@ impl Storage for CompositeMemory {
         }
     }
 
-    fn borrow_slice(&self, address: u32, length: u32) -> Result<&[u8], ()> {
+    fn read(&self, address: u32, size: u32) -> Result<u32, ()> {
         let (fragment, local_address) = self.get_fragment(address).ok_or(())?;
-        fragment.borrow_slice(local_address, length)
+        fragment.read(local_address, size)
     }
 }
 
@@ -227,12 +227,12 @@ impl StorageMut for CompositeMemory {
 fn find_mount_index() {
     let mut memory = CompositeMemory::new();
     assert_eq!(memory.find_mount_index(0, 16), Ok(0));
-    assert_eq!(memory.mount(0, "f0", Box::new(vec![0; 16])), Ok(()));
+    assert_eq!(memory.mount(0, "f0", [0u8; 16]), Ok(()));
     assert_eq!(
         memory.find_mount_index(8, 24),
         Err(MountError::FragmentIntersection)
     );
-    assert_eq!(memory.mount(20, "f1", Box::new(vec![0; 16])), Ok(()));
+    assert_eq!(memory.mount(20, "f1", [0u8; 16]), Ok(()));
     assert_eq!(memory.find_mount_index(16, 20), Ok(1));
     assert_eq!(memory.find_mount_index(18, 20), Ok(1));
     assert_eq!(memory.find_mount_index(40, 44), Ok(2));

@@ -1,3 +1,5 @@
+use super::*;
+
 #[test]
 fn write_read() {
     let path = "test.vex";
@@ -9,11 +11,11 @@ fn write_read() {
         30, 27, 34, 50, 91, 83, 49, 5, 6, 134, 61, 2, 6, 239, 34, 8, 15
     ];
 
-    let program_orig = vexfile::Program::from(data, instructions);
+    let program_orig = Program::from(data, instructions);
 
-    vexfile::write_file(path, &program_orig).unwrap();
+    write_file(path, &program_orig).unwrap();
 
-    let program_read = vexfile::read_file(path).unwrap();
+    let program_read = read_file(path).unwrap();
 
     assert_eq!(program_orig, program_read);
 

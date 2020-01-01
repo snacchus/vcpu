@@ -1,4 +1,4 @@
-use crate::{parse_and_assemble, JumpTarget, ParsedInstruction, Program, Rule, VASMParser};
+use crate::{assemble, JumpTarget, ParsedInstruction, Program, Rule, VASMParser};
 use ::pest::{error::Error as PestError, iterators::Pair, Parser};
 use byteorder::ByteOrder;
 use std::collections::HashMap;
@@ -123,7 +123,7 @@ end:  HALT";
         instr_i(OpCode::HALT, RegisterId::ZERO, RegisterId::ZERO, 0),
     ]);
 
-    let program = parse_and_assemble(input).unwrap();
+    let program = assemble(input).unwrap();
 
-    assert_eq!(program, Program::from(expected_data, expected_instr,));
+    assert_eq!(program, Program::from(expected_data, expected_instr));
 }

@@ -1,0 +1,13 @@
+[package]
+name = "vcpu-interop"
+version = "0.1.0"
+authors = ["Dennis Heinze <dennisjp.heinze@gmail.com>"]
+edition = "2018"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+vcpu = { path = ".." }
+vexfile = { path = "../vexfile" }
+vasm = { path = "../vasm" }

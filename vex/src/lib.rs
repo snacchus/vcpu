@@ -39,7 +39,7 @@ pub fn run_vasm<P: AsRef<Path>>(path: P, mem_size: u32) -> Result<(Processor, Ex
     let mut input = String::new();
     buf_reader.read_to_string(&mut input)?;
 
-    let program = vasm::parse_and_assemble(&input).map_err(Error::VASM)?;
+    let program = vasm::assemble(&input).map_err(Error::VASM)?;
 
     run_program(&program, mem_size)
 }

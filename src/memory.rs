@@ -30,21 +30,6 @@ pub trait Storage {
     /// ```
     fn check_range(&self, address: u32, length: u32) -> bool;
 
-    /// Immutably borrows a slice from the address range specified by `address` and `length`.
-    ///
-    /// # Errors
-    /// Returns an error if the range `[address..address+length]` is not addressable.
-    ///
-    /// # Examples
-    /// ```
-    /// use vcpu::Storage;
-    ///
-    /// let memory = [1u8, 2u8, 3u8, 4u8];
-    /// assert_eq!(memory.borrow_slice(1, 2), Ok(&[2, 3][..]));
-    /// assert_eq!(memory.borrow_slice(2, 4), Err(()));
-    /// ```
-    fn borrow_slice(&self, address: u32, length: u32) -> Result<&[u8], ()>;
-
     /// Reads the amount of bytes specified by `size` starting at the specified address, and converts the result to an unsigned integer.
     ///
     /// The conversion is always performed with the endianness defined by the [`Endian`] type alias.
@@ -64,10 +49,7 @@ pub trait Storage {
     /// assert_eq!(memory.read(4, 4), Err(()));
     /// ```
     /// [`Endian`]: ../type.Endian.html
-    fn read(&self, address: u32, size: u32) -> Result<u32, ()> {
-        assert!(size >= 1 && size <= 4);
-        Ok(Endian::read_uint(self.borrow_slice(address, size)?, size as usize) as u32)
-    }
+    fn read(&self, address: u32, size: u32) -> Result<u32, ()>;
 
     /// Reads [`BYTE_BYTES`] bytes starting at the specified address and returns the result as `u8`.
     ///
@@ -84,7 +66,7 @@ pub trait Storage {
     /// ```
     /// [`BYTE_BYTES`]: ../constants/constant.BYTE_BYTES.html
     fn read_byte(&self, address: u32) -> Result<u8, ()> {
-        Ok(self.borrow_slice(address, constants::BYTE_BYTES)?[0])
+        Ok(self.read(address, constants::BYTE_BYTES)? as u8)
     }
 
     /// Reads [`HALF_BYTES`] bytes starting at the specified address and converts the result to `u16`.
@@ -105,9 +87,7 @@ pub trait Storage {
     /// [`HALF_BYTES`]: ../constants/constant.HALF_BYTES.html
     /// [`Endian`]: ../type.Endian.html
     fn read_half(&self, address: u32) -> Result<u16, ()> {
-        Ok(Endian::read_u16(
-            self.borrow_slice(address, constants::HALF_BYTES)?,
-        ))
+        Ok(self.read(address, constants::HALF_BYTES)? as u16)
     }
 
     /// Reads [`WORD_BYTES`] bytes starting at the specified address and converts the result to `u32`.
@@ -128,9 +108,7 @@ pub trait Storage {
     /// [`WORD_BYTES`]: ../constants/constant.WORD_BYTES.html
     /// [`Endian`]: ../type.Endian.html
     fn read_word(&self, address: u32) -> Result<u32, ()> {
-        Ok(Endian::read_u32(
-            self.borrow_slice(address, constants::WORD_BYTES)?,
-        ))
+        Ok(self.read(address, constants::WORD_BYTES)?)
     }
 }
 
@@ -147,9 +125,14 @@ where
         address <= len && (address + length) <= len
     }
 
-    fn borrow_slice(&self, address: u32, length: u32) -> Result<&[u8], ()> {
-        if self.check_range(address, length) {
-            Ok(&self.as_ref()[address as usize..(address + length) as usize])
+    fn read(&self, address: u32, size: u32) -> Result<u32, ()> {
+        assert!(size >= 1 && size <= 4);
+
+        if self.check_range(address, size) {
+            Ok(Endian::read_uint(
+                &self.as_ref()[address as usize..(address + size) as usize],
+                size as usize,
+            ) as u32)
         } else {
             Err(())
         }
@@ -173,10 +156,10 @@ pub trait StorageMut: Storage {
     /// let mut memory = [0u8; 4];
     ///
     /// assert_eq!(memory.write(0, 2, 32938), Ok(()));
-    /// assert_eq!(memory.borrow_slice(0, 4), Ok(&[170, 128, 0, 0][..]));
+    /// assert_eq!(memory, &[170, 128, 0, 0][..]);
     ///
     /// assert_eq!(memory.write(0, 4, 587226975), Ok(()));
-    /// assert_eq!(memory.borrow_slice(0, 4), Ok(&[95, 95, 0, 35][..]));
+    /// assert_eq!(memory, &[95, 95, 0, 35][..]);
     /// ```
     fn write(&mut self, address: u32, size: u32, value: u32) -> Result<(), ()>;
 
@@ -191,7 +174,7 @@ pub trait StorageMut: Storage {
     ///
     /// let mut memory = [0u8; 4];
     /// assert_eq!(memory.write_byte(2, 102), Ok(()));
-    /// assert_eq!(memory.borrow_slice(0, 4), Ok(&[0, 0, 102, 0][..]));
+    /// assert_eq!(memory, &[0, 0, 102, 0][..]);
     /// assert_eq!(memory.write_byte(4, 224), Err(()));
     /// ```
     /// [`BYTE_BYTES`]: ../constants/constant.BYTE_BYTES.html
@@ -212,7 +195,7 @@ pub trait StorageMut: Storage {
     ///
     /// let mut memory = [0u8; 4];
     /// assert_eq!(memory.write_half(1, 5871), Ok(()));
-    /// assert_eq!(memory.borrow_slice(0, 4), Ok(&[0, 239, 22, 0][..]));
+    /// assert_eq!(memory, &[0, 239, 22, 0][..]);
     /// assert_eq!(memory.write_half(3, 8922), Err(()));
     /// ```
     /// [`HALF_BYTES`]: ../constants/constant.HALF_BYTES.html
@@ -234,7 +217,7 @@ pub trait StorageMut: Storage {
     ///
     /// let mut memory = [0u8; 4];
     /// assert_eq!(memory.write_word(0, 2568242499), Ok(()));
-    /// assert_eq!(memory.borrow_slice(0, 4), Ok(&[67, 69, 20, 153][..]));
+    /// assert_eq!(memory, &[67, 69, 20, 153][..]);
     /// assert_eq!(memory.write_word(1, 2220885), Err(()));
     /// ```
     /// [`WORD_BYTES`]: ../constants/constant.WORD_BYTES.html
