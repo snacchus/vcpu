@@ -18,6 +18,14 @@ impl<H: IOHandler> IOMemory<H> {
             handler,
         }
     }
+
+    pub fn data(&self) -> &[u8] {
+        &self.memory
+    }
+
+    pub fn data_mut(&mut self) -> &mut [u8] {
+        &mut self.memory
+    }
 }
 
 impl<H: IOHandler> Storage for IOMemory<H> {

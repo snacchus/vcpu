@@ -1,11 +1,8 @@
-pub mod error;
-pub use crate::error::{AssembleError, Error, ParseError};
-
 use byteorder::ByteOrder;
 use matches::*;
-use num::{Num, Signed, Unsigned};
+use num::{Num, NumCast, Signed, Unsigned};
 use pest::iterators::Pair;
-use pest::Parser;
+use pest::{Parser, Span};
 use pest_derive::Parser;
 use std::collections::HashMap;
 use std::mem;
@@ -16,10 +13,16 @@ use vexfile::Program;
 
 type Endian = byteorder::LittleEndian;
 
+pub type Error = pest::error::Error<crate::Rule>;
+
+pub fn new_parser_error(span: Span, message: String) -> Error {
+    Error::new_from_span(pest::error::ErrorVariant::CustomError { message }, span)
+}
+
 #[derive(Debug, PartialEq)]
 enum JumpTarget<'i, T: Num + Copy> {
     Address(T),
-    Label(&'i str),
+    Label(Span<'i>),
 }
 
 #[derive(Debug, PartialEq)]
@@ -38,85 +41,87 @@ enum ParsedInstruction<'i> {
     },
 }
 
-type ParseResult<T> = std::result::Result<T, ParseError>;
-type AssembleResult<T> = std::result::Result<T, AssembleError>;
-
-type Result<T> = std::result::Result<T, error::Error>;
+type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Parser)]
 #[grammar = "vasm.pest"]
 struct VASMParser;
 
 type LabelMap<'i> = HashMap<&'i str, u32>;
-type DataVec = Vec<u8>;
 type InstrVec<'i> = Vec<ParsedInstruction<'i>>;
-type DataInfo<'i> = (DataVec, LabelMap<'i>);
-type InstrInfo<'i> = (InstrVec<'i>, LabelMap<'i>);
 
-trait UnsignedFromStr: Signed + num::NumCast {
-    fn unsigned_from_str_radix(str: &str, radix: u32) -> ParseResult<Self>;
+trait GetUnsigned: Signed {
+    type Unsigned;
 }
 
-impl UnsignedFromStr for i8 {
-    fn unsigned_from_str_radix(str: &str, radix: u32) -> ParseResult<i8> {
-        num::NumCast::from(u8::from_str_radix(str, radix)?).ok_or(ParseError::CastInt)
-    }
+impl GetUnsigned for i8 {
+    type Unsigned = u8;
 }
 
-impl UnsignedFromStr for i16 {
-    fn unsigned_from_str_radix(str: &str, radix: u32) -> ParseResult<i16> {
-        num::NumCast::from(u16::from_str_radix(str, radix)?).ok_or(ParseError::CastInt)
-    }
+impl GetUnsigned for i16 {
+    type Unsigned = u16;
 }
 
-impl UnsignedFromStr for i32 {
-    fn unsigned_from_str_radix(str: &str, radix: u32) -> ParseResult<i32> {
-        num::NumCast::from(u32::from_str_radix(str, radix)?).ok_or(ParseError::CastInt)
-    }
+impl GetUnsigned for i32 {
+    type Unsigned = u32;
 }
 
-fn process_int_lit<T: Num<FromStrRadixErr = ParseIntError>>(
-    pair: Pair<Rule>,
-    base: u32,
-) -> ParseResult<T> {
-    T::from_str_radix(pair.as_span().as_str(), base).map_err(From::from)
+fn process_num_lit<T>(pair: Pair<Rule>, base: u32) -> Result<T>
+where
+    T: Num<FromStrRadixErr = ParseIntError>,
+{
+    let span = pair.as_span();
+    T::from_str_radix(span.as_str(), base)
+        .map_err(|err| new_parser_error(span, format!("Parsing integer failed: {}", err)))
 }
 
-fn process_uint_lit<T: UnsignedFromStr>(pair: Pair<Rule>, base: u32) -> ParseResult<T> {
-    T::unsigned_from_str_radix(pair.as_span().as_str(), base)
+fn process_unsigned_lit<T>(pair: Pair<Rule>, base: u32) -> Result<T>
+where
+    T: GetUnsigned + NumCast,
+    <T as GetUnsigned>::Unsigned: Num<FromStrRadixErr = ParseIntError> + NumCast,
+{
+    let span = pair.as_span();
+    NumCast::from(process_num_lit::<T::Unsigned>(pair, base)?).ok_or_else(|| {
+        new_parser_error(
+            span,
+            "Parsing integer failed: value would overflow unsigned integer".to_owned(),
+        )
+    })
 }
 
-fn process_uint<T>(pair: Pair<Rule>) -> ParseResult<T>
+fn process_uint<T>(pair: Pair<Rule>) -> Result<T>
 where
     T: Unsigned + Num<FromStrRadixErr = ParseIntError>,
 {
     let inner = pair.into_inner().next().unwrap();
     match inner.as_rule() {
-        Rule::bin_uint => process_int_lit(inner.into_inner().next().unwrap(), 2),
-        Rule::oct_uint => process_int_lit(inner.into_inner().next().unwrap(), 8),
-        Rule::hex_uint => process_int_lit(inner.into_inner().next().unwrap(), 16),
-        Rule::dec_uint => process_int_lit(inner, 10),
+        Rule::bin_uint => process_num_lit(inner.into_inner().next().unwrap(), 2),
+        Rule::oct_uint => process_num_lit(inner.into_inner().next().unwrap(), 8),
+        Rule::hex_uint => process_num_lit(inner.into_inner().next().unwrap(), 16),
+        Rule::dec_uint => process_num_lit(inner, 10),
         _ => unreachable!(),
     }
 }
 
-fn process_int<T>(pair: Pair<Rule>) -> ParseResult<T>
+fn process_int<T>(pair: Pair<Rule>) -> Result<T>
 where
-    T: Signed + UnsignedFromStr + Num<FromStrRadixErr = ParseIntError>,
+    T: GetUnsigned + Num<FromStrRadixErr = ParseIntError> + NumCast,
+    <T as GetUnsigned>::Unsigned: Num<FromStrRadixErr = ParseIntError> + NumCast,
 {
     let inner = pair.into_inner().next().unwrap();
     match inner.as_rule() {
-        Rule::bin_uint => process_uint_lit(inner.into_inner().next().unwrap(), 2),
-        Rule::oct_uint => process_uint_lit(inner.into_inner().next().unwrap(), 8),
-        Rule::hex_uint => process_uint_lit(inner.into_inner().next().unwrap(), 16),
-        Rule::dec_int => process_int_lit(inner, 10),
+        Rule::bin_uint => process_unsigned_lit(inner.into_inner().next().unwrap(), 2),
+        Rule::oct_uint => process_unsigned_lit(inner.into_inner().next().unwrap(), 8),
+        Rule::hex_uint => process_unsigned_lit(inner.into_inner().next().unwrap(), 16),
+        Rule::dec_int => process_num_lit(inner, 10),
         _ => unreachable!(),
     }
 }
 
-fn process_int_list<T>(pair: Pair<Rule>, data: &mut DataVec) -> ParseResult<()>
+fn process_int_list<T>(pair: Pair<Rule>, data: &mut Vec<u8>) -> Result<()>
 where
-    T: UnsignedFromStr + Num<FromStrRadixErr = ParseIntError>,
+    T: GetUnsigned + Num<FromStrRadixErr = ParseIntError> + NumCast,
+    <T as GetUnsigned>::Unsigned: Num<FromStrRadixErr = ParseIntError> + NumCast,
 {
     let pairs = pair.into_inner();
     let element_size = mem::size_of::<T>();
@@ -129,7 +134,10 @@ where
     data.reserve(estimated_size * element_size);
 
     for int in pairs {
-        let value = process_int::<T>(int)?.to_u64().ok_or(ParseError::CastInt)?;
+        let span = int.as_span();
+        let value = process_int::<T>(int)?
+            .to_u64()
+            .ok_or_else(|| new_parser_error(span, "Cannot cast integer".to_owned()))?;
         let current_size = data.len();
         let new_size = current_size + element_size;
         data.resize(new_size, 0u8);
@@ -138,17 +146,17 @@ where
     Ok(())
 }
 
-fn process_data_element(pair: Pair<Rule>, data: &mut DataVec) -> Result<()> {
+fn process_data_element(pair: Pair<Rule>, data: &mut Vec<u8>) -> Result<()> {
     debug_assert_matches!(pair.as_rule(), Rule::data_element);
     let inner = pair.into_inner().next().unwrap();
+    let span = inner.as_span();
 
     match inner.as_rule() {
         Rule::data_block => {
             let element_size = process_uint::<usize>(inner.into_inner().next().unwrap())?;
-            let new_size = data
-                .len()
-                .checked_add(element_size)
-                .ok_or(AssembleError::Misc)?;
+            let new_size = data.len().checked_add(element_size).ok_or_else(|| {
+                new_parser_error(span.clone(), "Data block is too big".to_owned())
+            })?;
             data.resize(new_size, 0u8);
         }
         Rule::data_byte => process_int_list::<i8>(inner.into_inner().next().unwrap(), data)?,
@@ -157,11 +165,16 @@ fn process_data_element(pair: Pair<Rule>, data: &mut DataVec) -> Result<()> {
         _ => unreachable!(),
     };
 
-    if data.len() >= u32::max_value() as usize {
-        return Err(From::from(AssembleError::Misc));
-    }
+    let max_size = u32::max_value() as usize - 1;
 
-    Ok(())
+    if data.len() > max_size {
+        Err(new_parser_error(
+            span,
+            format!("Data exceeds maximum size of {} bytes", max_size),
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 fn process_labeled_element<'i, F>(
@@ -190,7 +203,7 @@ where
     Ok(())
 }
 
-fn process_data(pair: Pair<Rule>) -> Result<DataInfo> {
+fn process_data(pair: Pair<Rule>) -> Result<(Vec<u8>, LabelMap)> {
     debug_assert_matches!(pair.as_rule(), Rule::data);
 
     let mut data = Vec::new();
@@ -209,25 +222,27 @@ fn process_data(pair: Pair<Rule>) -> Result<DataInfo> {
     Ok((data, labels))
 }
 
-fn process_enum_inner<'i, T: FromStr<Err = ParseEnumError>>(
-    pair: &Pair<'i, Rule>,
-) -> ParseResult<T> {
-    pair.as_str().to_uppercase().parse().map_err(From::from)
+fn process_enum_inner<'i, T: FromStr<Err = ParseEnumError>>(pair: &Pair<'i, Rule>) -> Result<T> {
+    pair.as_str()
+        .to_uppercase()
+        .parse()
+        .map_err(|err| new_parser_error(pair.as_span(), format!("{}", err)))
 }
 
-fn process_enum<T: FromStr<Err = ParseEnumError>>(pair: Pair<Rule>) -> ParseResult<T> {
+fn process_enum<T: FromStr<Err = ParseEnumError>>(pair: Pair<Rule>) -> Result<T> {
     process_enum_inner(&pair.into_inner().next().unwrap())
 }
 
-fn process_jump_target<T>(pair: Pair<Rule>) -> ParseResult<JumpTarget<T>>
+fn process_jump_target<T>(pair: Pair<Rule>) -> Result<JumpTarget<T>>
 where
-    T: UnsignedFromStr + Num<FromStrRadixErr = ParseIntError> + Copy,
+    T: GetUnsigned + Num<FromStrRadixErr = ParseIntError> + NumCast + Copy,
+    <T as GetUnsigned>::Unsigned: Num<FromStrRadixErr = ParseIntError> + NumCast,
 {
     let inner = pair.into_inner().next().unwrap();
     let rule = inner.as_rule();
     let target = match rule {
         Rule::int => JumpTarget::Address(process_int(inner)?),
-        Rule::identifier => JumpTarget::Label(inner.as_str()),
+        Rule::identifier => JumpTarget::Label(inner.as_span()),
         _ => unreachable!(),
     };
     Ok(target)
@@ -238,6 +253,7 @@ fn process_instruction<'i>(
     instr: &mut InstrVec<'i>,
     data_labels: &LabelMap<'i>,
 ) -> Result<()> {
+    let span = pair.as_span();
     let inner = pair.into_inner().next().unwrap();
     let rule = inner.as_rule();
     let mut pairs = inner.into_inner();
@@ -281,8 +297,12 @@ fn process_instruction<'i>(
         Rule::instruction_la => {
             pairs.next();
             let rd = process_enum(pairs.next().unwrap())?;
-            let label = pairs.next().unwrap().as_span().as_str();
-            let address = data_labels.get(label).ok_or(AssembleError::Misc)?;
+            let label_span = pairs.next().unwrap().as_span();
+            let label = label_span.as_str();
+            let address = data_labels.get(label).ok_or_else(|| {
+                new_parser_error(label_span, "Data label was not found".to_owned())
+            })?;
+
             instr.push(ParsedInstruction::Complete(instr_i(
                 OpCode::LI,
                 rd,
@@ -342,17 +362,22 @@ fn process_instruction<'i>(
         _ => unreachable!(),
     }
 
-    if instr.len() >= (u32::max_value() / constants::WORD_BYTES) as usize {
-        return Err(From::from(AssembleError::Misc));
-    }
+    let max_size = (u32::max_value() / constants::WORD_BYTES) as usize - 1;
 
-    Ok(())
+    if instr.len() > max_size {
+        Err(new_parser_error(
+            span,
+            format!("Instructions exceed maximum size of {} bytes", max_size),
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 fn process_instructions<'i>(
     pair: Pair<'i, Rule>,
     data_labels: &LabelMap<'i>,
-) -> Result<InstrInfo<'i>> {
+) -> Result<(InstrVec<'i>, LabelMap<'i>)> {
     debug_assert_matches!(pair.as_rule(), Rule::instructions);
 
     let mut instructions = Vec::new();
@@ -371,70 +396,66 @@ fn process_instructions<'i>(
     Ok((instructions, labels))
 }
 
-struct Assembler<'i> {
-    parsed_instructions: InstrVec<'i>,
-    instruction_labels: LabelMap<'i>,
+fn resolve_jump_target<T: NumCast + Num + Copy>(
+    labels: &LabelMap,
+    target: &JumpTarget<T>,
+    current_instr: u32,
+) -> Result<T> {
+    match target {
+        JumpTarget::Address(address) => Ok(*address),
+        JumpTarget::Label(label) => {
+            let absolute =
+                Into::<i64>::into(*labels.get(label.as_str()).ok_or_else(|| {
+                    new_parser_error(label.clone(), "Label not found".to_owned())
+                })?);
+
+            let relative = absolute - Into::<i64>::into(current_instr);
+            let byte_dist = relative * Into::<i64>::into(constants::WORD_BYTES);
+            num::NumCast::from(byte_dist)
+                .ok_or_else(|| new_parser_error(label.clone(), "Jump distance too far".to_owned()))
+        }
+    }
 }
 
-impl<'i> Assembler<'i> {
-    fn resolve_jump_target<T: num::NumCast + Num + Copy>(
-        &self,
-        target: &JumpTarget<T>,
-        current_instr: u32,
-    ) -> AssembleResult<T> {
-        match *target {
-            JumpTarget::Address(address) => Ok(address),
-            JumpTarget::Label(label) => {
-                let absolute = i64::from(
-                    *self
-                        .instruction_labels
-                        .get(label)
-                        .ok_or(AssembleError::Misc)?,
-                );
-                let relative = absolute - i64::from(current_instr);
-                let byte_dist = relative * i64::from(constants::WORD_BYTES);
-                num::NumCast::from(byte_dist).ok_or(AssembleError::Misc)
-            }
-        }
+fn finalize_instruction(
+    labels: &LabelMap,
+    instr: &ParsedInstruction,
+    current_instr: u32,
+) -> Result<Word> {
+    Ok(match *instr {
+        ParsedInstruction::Complete(word) => word,
+        ParsedInstruction::Branch {
+            ref opcode,
+            ref rs1,
+            ref target,
+        } => instr_i(
+            *opcode,
+            RegisterId::ZERO,
+            *rs1,
+            resolve_jump_target(labels, &target, current_instr)?,
+        ),
+        ParsedInstruction::Jump {
+            ref opcode,
+            ref target,
+        } => instr_j(
+            *opcode,
+            resolve_jump_target(labels, &target, current_instr)?,
+        ),
+    })
+}
+
+fn assemble_instructions(instr: &[ParsedInstruction], labels: &LabelMap) -> Result<Vec<u8>> {
+    let result_size = instr.len() * constants::WORD_BYTES as usize;
+    let mut result = vec![0; result_size];
+
+    for (i, pi) in instr.iter().enumerate() {
+        let instr = finalize_instruction(labels, pi, i as u32)?;
+        let start = i * constants::WORD_BYTES as usize;
+        let end = start + constants::WORD_BYTES as usize;
+        Endian::write_u32(&mut result[start..end], instr);
     }
 
-    fn finalize_instruction(
-        &self,
-        instr: &ParsedInstruction,
-        current_instr: u32,
-    ) -> AssembleResult<Word> {
-        Ok(match *instr {
-            ParsedInstruction::Complete(word) => word,
-            ParsedInstruction::Branch {
-                ref opcode,
-                ref rs1,
-                ref target,
-            } => instr_i(
-                *opcode,
-                RegisterId::ZERO,
-                *rs1,
-                self.resolve_jump_target(&target, current_instr)?,
-            ),
-            ParsedInstruction::Jump {
-                ref opcode,
-                ref target,
-            } => instr_j(*opcode, self.resolve_jump_target(&target, current_instr)?),
-        })
-    }
-
-    pub fn assemble_instructions(self) -> AssembleResult<Vec<u8>> {
-        let result_size = self.parsed_instructions.len() * constants::WORD_BYTES as usize;
-        let mut result = vec![0; result_size];
-
-        for (i, pi) in self.parsed_instructions.iter().enumerate() {
-            let instr = self.finalize_instruction(pi, i as u32)?;
-            let start = i * constants::WORD_BYTES as usize;
-            let end = start + constants::WORD_BYTES as usize;
-            Endian::write_u32(&mut result[start..end], instr);
-        }
-
-        Ok(result)
-    }
+    Ok(result)
 }
 
 fn assemble_parsed(pair: Pair<Rule>) -> Result<Program> {
@@ -443,15 +464,13 @@ fn assemble_parsed(pair: Pair<Rule>) -> Result<Program> {
     let (data, data_labels) = process_data(pairs.next().unwrap())?;
     let (instr, instr_labels) = process_instructions(pairs.next().unwrap(), &data_labels)?;
 
-    let assembler = Assembler {
-        parsed_instructions: instr,
-        instruction_labels: instr_labels,
-    };
-
-    Ok(Program::from(data, assembler.assemble_instructions()?))
+    Ok(Program::from(
+        data,
+        assemble_instructions(&instr, &instr_labels)?,
+    ))
 }
 
-fn parse(input: &str) -> ParseResult<Pair<Rule>> {
+fn parse(input: &str) -> Result<Pair<Rule>> {
     Ok(VASMParser::parse(Rule::program, input)?.next().unwrap())
 }
 

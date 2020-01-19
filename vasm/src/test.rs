@@ -1,5 +1,5 @@
 use crate::{assemble, JumpTarget, ParsedInstruction, Program, Rule, VASMParser};
-use ::pest::{error::Error as PestError, iterators::Pair, Parser};
+use ::pest::{error::Error as PestError, iterators::Pair, Parser, Span};
 use byteorder::ByteOrder;
 use std::collections::HashMap;
 use vcpu::*;
@@ -63,14 +63,14 @@ end:  HALT";
         ParsedInstruction::Branch {
             opcode: OpCode::BEZ,
             rs1: RegisterId::T2,
-            target: JumpTarget::Label("end"),
+            target: JumpTarget::Label(Span::new(input, 54, 57).unwrap()),
         },
         ParsedInstruction::Complete(instr_i(OpCode::SLLI, RegisterId::T1, RegisterId::T0, 2)),
         ParsedInstruction::Complete(instr_i(OpCode::SW, RegisterId::T0, RegisterId::T1, 0)),
         ParsedInstruction::Complete(instr_i(OpCode::ADDI, RegisterId::T0, RegisterId::T0, 1)),
         ParsedInstruction::Jump {
             opcode: OpCode::JMP,
-            target: JumpTarget::Label("loop"),
+            target: JumpTarget::Label(Span::new(input, 137, 141).unwrap()),
         },
         ParsedInstruction::Complete(instr_i(OpCode::HALT, RegisterId::ZERO, RegisterId::ZERO, 0)),
     ];

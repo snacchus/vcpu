@@ -6,8 +6,8 @@ use vcpu::memory::io::{IOHandler, IOMemory};
 use vcpu::{Processor, Storage, StorageMut};
 use vexfile::Program;
 
-use std::cell::RefCell;
-use std::ffi::{c_void, CStr};
+use std::cell::{Cell, RefCell};
+use std::ffi::{c_void, CStr, CString};
 use std::ops::{Deref, DerefMut};
 use std::os::raw::c_char;
 use std::rc::Rc;
@@ -17,13 +17,14 @@ use std::slice;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum VCPUResult {
     Ok = 0,
-    UnknownError = -1,
-    InvalidType = -2,
-    FragmentIntersection = -3,
-    KeyAlreadyExists = -4,
-    UTF8Error = -5,
-    AssemblerError = -6,
-    MemoryInUse = -7,
+    UnknownError,
+    InvalidType,
+    UTF8Error,
+    AssemblerError,
+    MemoryInUse,
+    FragmentIntersection,
+    KeyAlreadyExists,
+    OutOfRange,
 }
 
 unsafe fn into_ptr<T>(t: T) -> *mut T {
@@ -79,6 +80,13 @@ pub struct Memory(Rc<RefCell<MemoryVariant>>);
 impl Memory {
     fn new(variant: MemoryVariant) -> Memory {
         Memory(Rc::new(RefCell::new(variant)))
+    }
+
+    fn try_use<F: FnOnce(&MemoryVariant) -> VCPUResult>(&self, f: F) -> VCPUResult {
+        match &self.0.try_borrow() {
+            Ok(reference) => f(reference.deref()),
+            Err(_) => VCPUResult::MemoryInUse,
+        }
     }
 
     fn try_use_mut<F: FnOnce(&mut MemoryVariant) -> VCPUResult>(&mut self, f: F) -> VCPUResult {
@@ -160,6 +168,90 @@ pub unsafe extern "C" fn vcpu_memory_create_io(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn vcpu_memory_get_ptr(
+    memory: *mut Memory,
+    ptr: *mut *mut u8,
+    size: *mut u32,
+) -> VCPUResult {
+    (*memory).try_use_mut(|variant| {
+        let slice = match variant {
+            MemoryVariant::Plain(inner) => inner,
+            MemoryVariant::IO(inner) => inner.data_mut(),
+            _ => {
+                return VCPUResult::InvalidType;
+            }
+        };
+
+        *ptr = slice.as_mut_ptr();
+        *size = slice.len() as u32;
+
+        VCPUResult::Ok
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn vcpu_memory_read(
+    memory: *const Memory,
+    dest: *mut u8,
+    offset: u32,
+    length: u32,
+) -> VCPUResult {
+    (*memory).try_use(|variant| {
+        let slice = match variant {
+            MemoryVariant::Plain(inner) => inner,
+            MemoryVariant::IO(inner) => inner.data(),
+            _ => {
+                return VCPUResult::InvalidType;
+            }
+        };
+
+        if slice.check_range(offset, length) {
+            std::slice::from_raw_parts_mut(dest, length as usize)
+                .copy_from_slice(&slice[offset as usize..(offset + length) as usize]);
+            VCPUResult::Ok
+        } else {
+            VCPUResult::OutOfRange
+        }
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn vcpu_memory_write(
+    memory: *mut Memory,
+    src: *const u8,
+    offset: u32,
+    length: u32,
+) -> VCPUResult {
+    (*memory).try_use_mut(|variant| {
+        let slice = match variant {
+            MemoryVariant::Plain(inner) => inner,
+            MemoryVariant::IO(inner) => inner.data_mut(),
+            _ => {
+                return VCPUResult::InvalidType;
+            }
+        };
+
+        if slice.check_range(offset, length) {
+            slice[offset as usize..(offset + length) as usize]
+                .copy_from_slice(std::slice::from_raw_parts(src, length as usize));
+            VCPUResult::Ok
+        } else {
+            VCPUResult::OutOfRange
+        }
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn vcpu_memcpy(
+    dst: *mut c_void,
+    src: *const c_void,
+    length: usize,
+) -> *mut c_void {
+    std::ptr::copy_nonoverlapping(src, dst, length);
+    dst
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn vcpu_memory_create_comp() -> *mut Memory {
     into_ptr(Memory::new(
         MemoryVariant::Composite(CompositeMemory::new()),
@@ -231,7 +323,7 @@ pub unsafe extern "C" fn vcpu_processor_destroy(processor: *mut Processor) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn vcpu_tick(
+pub unsafe extern "C" fn vcpu_processor_tick(
     processor: *mut Processor,
     instr: *const u8,
     instr_len: usize,
@@ -251,7 +343,7 @@ pub unsafe extern "C" fn vcpu_tick(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn vcpu_run(
+pub unsafe extern "C" fn vcpu_processor_run(
     processor: *mut Processor,
     instr: *const u8,
     instr_len: usize,
@@ -274,6 +366,7 @@ pub unsafe extern "C" fn vcpu_run(
 pub unsafe extern "C" fn vcpu_program_assemble(
     source: *const c_char,
     program: *mut *mut Program,
+    error: *mut *const c_char,
 ) -> VCPUResult {
     match CStr::from_ptr(source).to_str() {
         Ok(src) => match assemble(src) {
@@ -281,11 +374,24 @@ pub unsafe extern "C" fn vcpu_program_assemble(
                 *program = into_ptr(result);
                 VCPUResult::Ok
             }
-            Err(_) => VCPUResult::AssemblerError,
+            Err(err) => {
+                if !error.is_null() {
+                    LAST_ERROR.with(|f| {
+                        let err_str = CString::new(format!("{}", err)).unwrap_or_default();
+                        *error = err_str.as_ptr();
+                        f.set(err_str);
+                    });
+                }
+                VCPUResult::AssemblerError
+            }
         },
 
         Err(_) => VCPUResult::UTF8Error,
     }
+}
+
+thread_local! {
+    static LAST_ERROR: Cell<CString> = Cell::new(Default::default());
 }
 
 #[no_mangle]

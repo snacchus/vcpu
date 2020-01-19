@@ -49,7 +49,7 @@ fn run_simple() {
         ]);
 
         assert_eq!(
-            vcpu_run(processor, program.as_ptr(), program.len(), memory),
+            vcpu_processor_run(processor, program.as_ptr(), program.len(), memory),
             VCPUResult::Ok
         );
 
@@ -88,7 +88,7 @@ end:  HALT";
         let mut program: *mut Program = null_mut();
 
         assert_eq!(
-            vcpu_program_assemble(source.as_ptr(), &mut program),
+            vcpu_program_assemble(source.as_ptr(), &mut program, null_mut()),
             VCPUResult::Ok
         );
 
@@ -103,7 +103,7 @@ end:  HALT";
         assert_ne!(instr_len, 0);
 
         assert_eq!(
-            vcpu_run(processor, instr, instr_len, memory),
+            vcpu_processor_run(processor, instr, instr_len, memory),
             VCPUResult::Ok
         );
 
@@ -117,5 +117,27 @@ end:  HALT";
         vcpu_program_destroy(program);
         vcpu_processor_destroy(processor);
         vcpu_memory_destroy(memory);
+    }
+}
+
+#[test]
+fn assemble_with_error() {
+    unsafe {
+        let source_str = ".data
+.instructions
+STUFF
+HALT";
+
+        let source = CString::new(source_str).expect("CString::new failed.");
+        let mut program: *mut Program = null_mut();
+        let mut error: *const c_char = null();
+
+        assert_eq!(
+            vcpu_program_assemble(source.as_ptr(), &mut program, &mut error),
+            VCPUResult::AssemblerError
+        );
+
+        assert_eq!(program, null_mut());
+        assert_ne!(error, null());
     }
 }
