@@ -119,4 +119,11 @@ mod tests {
             assert_eq!(value, i);
         }
     }
+
+    #[test]
+    fn empty_instructions() {
+        let program: [u8; 0] = [];
+
+        let (_, _) = test_program_me(0, &program[..], ExitCode::BadProgramCounter);
+    }
 }

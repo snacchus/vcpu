@@ -22,14 +22,24 @@ pub fn program_from_words(vec: &[Word]) -> Vec<u8> {
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum ExitCode {
-    Halted,          // HALT instruction was executed (Normal shutdown)
-    Terminated,      // External termination signal was sent
-    DivisionByZero,  // Attempted integer division by zero
-    BadMemoryAccess, // Attempted to access main memory at invalid address
-    BadAlignment,    // Jump address was not aligned to word boundaries
-    BadJump,         // Jump address was out of instruction memory range
-    InvalidOpcode,   // Opcode or funct was not recognized
-    Unknown,         // Reason for shutdown unknown
+    /// HALT instruction was executed (Normal shutdown)
+    Halted,
+    /// Reason for shutdown unknown          
+    Unknown,
+    /// External termination signal was sent         
+    Terminated,
+    /// Attempted integer division by zero      
+    DivisionByZero,
+    /// Attempted to access main memory at invalid address  
+    BadMemoryAccess,
+    /// Jump address was not aligned to word boundaries
+    BadAlignment,
+    /// Jump address was out of instruction memory range  
+    BadJump,
+    /// Opcode or funct was not recognized
+    InvalidOpcode,
+    /// Program counter is out of instruction memory range
+    BadProgramCounter,
 }
 
 pub struct Processor {
@@ -57,9 +67,23 @@ impl Processor {
 
     pub fn tick(&mut self, instructions: &[u8], storage: &mut dyn StorageMut) -> Option<ExitCode> {
         if !self.is_stopped() {
-            let instr_len = instructions.len() as u32;
+            self.state = self.get_new_state(instructions, storage);
+        }
 
+        self.state
+    }
+
+    fn get_new_state(
+        &mut self,
+        instructions: &[u8],
+        storage: &mut dyn StorageMut,
+    ) -> Option<ExitCode> {
+        let instr_len = instructions.len() as u32;
+        if self.program_counter + constants::WORD_BYTES > instr_len {
+            Some(ExitCode::BadProgramCounter)
+        } else {
             let pc = self.program_counter as usize;
+
             let instruction =
                 Endian::read_u32(&instructions[pc..(pc + constants::WORD_BYTES as usize)]);
 
@@ -70,7 +94,7 @@ impl Processor {
                 self.program_counter,
             );
 
-            self.state = match tick_result {
+            match tick_result {
                 TickResult::Next => {
                     let new_pc = self.program_counter.wrapping_add(constants::WORD_BYTES);
                     self.program_counter = if new_pc < instr_len { new_pc } else { 0 };
@@ -89,8 +113,6 @@ impl Processor {
                 TickResult::Stop(exit_code) => Some(exit_code),
             }
         }
-
-        self.state
     }
 
     pub fn run(&mut self, instructions: &[u8], storage: &mut dyn StorageMut) -> ExitCode {
