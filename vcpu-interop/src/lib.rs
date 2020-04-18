@@ -12,6 +12,7 @@ use std::ops::{Deref, DerefMut};
 use std::os::raw::c_char;
 use std::rc::Rc;
 use std::slice;
+use num_traits::FromPrimitive;
 
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -315,6 +316,11 @@ pub unsafe extern "C" fn vcpu_processor_get_state(processor: *const Processor) -
         Some(code) => code as i32,
         None => -1,
     }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn vcpu_processor_get_register(processor: *const Processor, index: u32) -> i32 {
+    (*processor).register(FromPrimitive::from_u32(index).unwrap()).i()
 }
 
 #[no_mangle]

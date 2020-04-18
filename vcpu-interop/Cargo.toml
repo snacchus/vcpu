@@ -11,3 +11,4 @@ crate-type = ["cdylib"]
 vcpu = { path = ".." }
 vexfile = { path = "../vexfile" }
 vasm = { path = "../vasm" }
+num-traits = "0.2"
