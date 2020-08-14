@@ -1,11 +1,14 @@
 #[macro_use]
 extern crate clap;
 
+use byteorder::WriteBytesExt;
 use clap::Arg;
 use std::fs::File;
 use std::io::prelude::*;
-use std::io::BufReader;
+use std::io::{BufReader, BufWriter};
 use std::path::{Path, PathBuf};
+use util::Endian;
+use vasm::SourceMapItem;
 
 #[derive(Debug)]
 enum IOErrorContext {
@@ -57,17 +60,26 @@ fn main() {
                 .value_name("OUTPUT")
                 .help("Sets the output file to write to"),
         )
+        .arg(
+            Arg::with_name("source_map")
+                .short("m")
+                .long("source_map")
+                .takes_value(true)
+                .value_name("SOURCE_MAP")
+                .help("Sets the file to write the source map to"),
+        )
         .get_matches();
 
     let input = matches.value_of("INPUT").unwrap();
     let output = matches.value_of("OUTPUT");
+    let map = matches.value_of("SOURCE_MAP");
 
-    if let Err(err) = vasm(input, output) {
+    if let Err(err) = vasm(input, output, map) {
         eprintln!("{}", err);
     }
 }
 
-fn vasm(input: &str, output: Option<&str>) -> Result<(), Error> {
+fn vasm(input: &str, output: Option<&str>, map: Option<&str>) -> Result<(), Error> {
     let input_path = Path::new(input);
 
     // Read input file
@@ -81,7 +93,7 @@ fn vasm(input: &str, output: Option<&str>) -> Result<(), Error> {
         .map_err(|err| Error::IO(err, IOErrorContext::ReadInput, input_path.to_owned()))?;
 
     // Perform parse
-    let program = vasm::assemble(&input).map_err(|err| {
+    let (program, source_map) = vasm::assemble(&input).map_err(|err| {
         Error::VASM(match input_path.to_str() {
             Some(path_str) => err.with_path(path_str),
             None => err,
@@ -95,5 +107,21 @@ fn vasm(input: &str, output: Option<&str>) -> Result<(), Error> {
     // Write output file
     vexfile::write_file(&output_path, &program)
         .map_err(|err| Error::IO(err, IOErrorContext::WriteOutput, output_path))?;
+
+    // Write source map file (if path is set)
+    if let Some(map_path_str) = map {
+        let map_path = PathBuf::from(map_path_str);
+        write_source_map(&source_map[..], &map_path)
+            .map_err(|err| Error::IO(err, IOErrorContext::WriteOutput, map_path))?;
+    }
+    Ok(())
+}
+
+fn write_source_map(source_map: &[SourceMapItem], path: &PathBuf) -> std::io::Result<()> {
+    let mut writer = BufWriter::new(File::create(path)?);
+    for item in source_map.iter() {
+        writer.write_u32::<Endian>(item.start_line)?;
+        writer.write_u32::<Endian>(item.line_count)?;
+    }
     Ok(())
 }

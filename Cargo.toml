@@ -5,9 +5,11 @@ authors = ["Dennis Heinze <dennisjp.heinze@gmail.com>"]
 edition = "2018"
 
 [workspace]
-members = [ "vasm", "vexfile", "vex", "vcpu-interop" ]
+members = [ "vasm", "vexfile", "vcpu-interop", "util", "util-derive" ]
 
 [dependencies]
+util = { path = "util" }
+util-derive = { path = "util-derive" }
 byteorder = "1"
 num = "0.1"
 num-derive = "0.2"

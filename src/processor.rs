@@ -3,8 +3,11 @@ mod logic;
 use crate::memory::StorageMut;
 use crate::{constants, register_index, Address, Endian, Immediate, Register, RegisterId, Word};
 use logic::TickResult;
+use util::InteropGetName;
+use util_derive::InteropGetName;
 
 use byteorder::ByteOrder;
+use num_derive::{FromPrimitive, ToPrimitive};
 
 pub const fn jmp_addr_i16(offset: i16) -> Immediate {
     offset * (constants::WORD_BYTES as i16)
@@ -20,14 +23,19 @@ pub fn program_from_words(vec: &[Word]) -> Vec<u8> {
     byte_vec
 }
 
-#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+fn get_next_pc(pc: u32, instr_len: u32) -> u32 {
+    let result = pc.wrapping_add(constants::WORD_BYTES);
+    if result < instr_len {
+        result
+    } else {
+        0
+    }
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Copy, FromPrimitive, ToPrimitive, InteropGetName)]
 pub enum ExitCode {
     /// HALT instruction was executed (Normal shutdown)
     Halted,
-    /// Reason for shutdown unknown          
-    Unknown,
-    /// External termination signal was sent         
-    Terminated,
     /// Attempted integer division by zero      
     DivisionByZero,
     /// Attempted to access main memory at invalid address  
@@ -53,8 +61,24 @@ impl Processor {
         Default::default()
     }
 
+    pub fn registers(&self) -> &[Register; constants::REGISTER_COUNT] {
+        &self.registers
+    }
+
+    pub fn registers_mut(&mut self) -> &mut [Register; constants::REGISTER_COUNT] {
+        &mut self.registers
+    }
+
     pub fn register(&self, id: RegisterId) -> &Register {
         &self.registers[register_index(id)]
+    }
+
+    pub fn register_mut(&mut self, id: RegisterId) -> &mut Register {
+        &mut self.registers[register_index(id)]
+    }
+
+    pub fn program_counter(&self) -> u32 {
+        self.program_counter
     }
 
     pub fn state(&self) -> Option<ExitCode> {
@@ -71,6 +95,12 @@ impl Processor {
         }
 
         self.state
+    }
+
+    pub fn reset(&mut self) {
+        self.registers = [Default::default(); constants::REGISTER_COUNT];
+        self.program_counter = 0u32;
+        self.state = None;
     }
 
     fn get_new_state(
@@ -96,16 +126,20 @@ impl Processor {
 
             match tick_result {
                 TickResult::Next => {
-                    let new_pc = self.program_counter.wrapping_add(constants::WORD_BYTES);
-                    self.program_counter = if new_pc < instr_len { new_pc } else { 0 };
+                    self.program_counter = get_next_pc(self.program_counter, instr_len);
                     None
                 }
-                TickResult::Jump(new_pc) => {
+                TickResult::Jump(new_pc, link) => {
                     if (new_pc % (constants::WORD_BYTES as u32)) != 0 {
                         Some(ExitCode::BadAlignment)
                     } else if new_pc >= instr_len {
                         Some(ExitCode::BadJump)
                     } else {
+                        let old_pc = self.program_counter;
+                        if link {
+                            self.register_mut(RegisterId::RA)
+                                .set_u(get_next_pc(old_pc, instr_len));
+                        }
                         self.program_counter = new_pc;
                         None
                     }

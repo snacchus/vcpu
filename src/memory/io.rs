@@ -1,5 +1,8 @@
 use crate::memory::{Storage, StorageMut};
 
+// TODO: think about replacing this with fully custom storage
+//       that can be implemented externally
+
 pub trait IOHandler {
     fn can_write(&self, memory: &[u8], address: u32, size: u32) -> bool;
 
@@ -25,6 +28,10 @@ impl<H: IOHandler> IOMemory<H> {
 
     pub fn data_mut(&mut self) -> &mut [u8] {
         &mut self.memory
+    }
+
+    pub fn resize(&mut self, size: u32) {
+        self.memory.resize(size as usize, u8::default())
     }
 }
 
@@ -110,9 +117,9 @@ mod tests {
         );
 
         let program = program_from_words(&[
-            instr_i(OpCode::LI, RegisterId::T0, RegisterId::ZERO, 923),
-            instr_i(OpCode::SW, RegisterId::T0, RegisterId::ZERO, 4),
-            instr_i(OpCode::HALT, RegisterId::ZERO, RegisterId::ZERO, 0),
+            instr_i!(LI, T0, ZERO, 923),
+            instr_i!(SW, T0, ZERO, 4),
+            instr_i!(HALT, ZERO, ZERO, 0),
         ]);
 
         let mut processor = Processor::default();

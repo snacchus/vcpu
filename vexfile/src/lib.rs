@@ -1,54 +1,75 @@
-use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use byteorder::{ReadBytesExt, WriteBytesExt};
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{BufReader, BufWriter};
+use std::mem;
 use std::path::Path;
+use util::Endian;
+
+// TODO: use proper binary serialization using serde/bincode
 
 #[derive(Debug, PartialEq)]
 pub struct Program {
-    data: Vec<u8>,
+    data_offset: u32,
     instructions: Vec<u8>,
+    data: Vec<u8>,
 }
 
 impl Program {
-    pub fn from(data: Vec<u8>, instructions: Vec<u8>) -> Program {
-        Program { data, instructions }
-    }
-
-    pub fn copy_from(data: &[u8], instructions: &[u8]) -> Program {
+    pub fn from(data_offset: u32, instructions: Vec<u8>, data: Vec<u8>) -> Program {
         Program {
-            data: Vec::from(data),
-            instructions: Vec::from(instructions),
+            data_offset,
+            instructions,
+            data,
         }
     }
 
-    pub fn data(&self) -> &[u8] {
-        &self.data[..]
+    pub fn copy_from(data_offset: u32, instructions: &[u8], data: &[u8]) -> Program {
+        Program {
+            data_offset,
+            instructions: Vec::from(instructions),
+            data: Vec::from(data),
+        }
+    }
+
+    pub fn data_offset(&self) -> u32 {
+        self.data_offset
     }
 
     pub fn instructions(&self) -> &[u8] {
         &self.instructions[..]
     }
+
+    pub fn data(&self) -> &[u8] {
+        &self.data[..]
+    }
 }
 
 pub fn read<R: Read>(reader: &mut R) -> std::io::Result<Program> {
-    // TODO: Define endianness in "common" crate
-    let data_length = reader.read_u32::<LittleEndian>()?;
+    let instr_len = reader.read_u32::<Endian>()?;
+    let data_length = reader.read_u32::<Endian>()?;
+    let data_offset = reader.read_u32::<Endian>()?;
+
+    let mut instructions = vec![0; instr_len as usize];
     let mut data = vec![0; data_length as usize];
+
+    reader.read_exact(&mut instructions)?;
     reader.read_exact(&mut data)?;
 
-    let mut instructions = Vec::new();
-    reader.read_to_end(&mut instructions)?;
-
-    Ok(Program::from(data, instructions))
+    Ok(Program::from(data_offset, instructions, data))
 }
 
 pub fn write<W: Write>(writer: &mut W, program: &Program) -> std::io::Result<()> {
-    // TODO: Define endianness in "common" crate
-    writer.write_u32::<LittleEndian>(program.data.len() as u32)?;
-    writer.write_all(&program.data[..])?;
+    writer.write_u32::<Endian>(program.instructions.len() as u32)?;
+    writer.write_u32::<Endian>(program.data.len() as u32)?;
+    writer.write_u32::<Endian>(program.data_offset)?;
     writer.write_all(&program.instructions[..])?;
+    writer.write_all(&program.data[..])?;
     Ok(())
+}
+
+pub fn get_required_size(program: &Program) -> usize {
+    mem::size_of::<u32>() * 3 + program.instructions.len() + program.data().len()
 }
 
 pub trait ReadVexExt: Read + Sized {

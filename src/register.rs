@@ -36,3 +36,37 @@ impl Default for Register {
         Register { u: 0 }
     }
 }
+
+impl From<i32> for Register {
+    fn from(v: i32) -> Register {
+        Register { i: v }
+    }
+}
+
+impl From<u32> for Register {
+    fn from(v: u32) -> Register {
+        Register { u: v }
+    }
+}
+
+impl From<f32> for Register {
+    fn from(v: f32) -> Register {
+        Register { f: v }
+    }
+}
+
+impl PartialEq for Register {
+    fn eq(&self, rhs: &Register) -> bool {
+        self.u() == rhs.u()
+    }
+}
+
+impl std::fmt::Debug for Register {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+        f.debug_struct("Register")
+            .field("i", &self.i())
+            .field("u", &self.u())
+            .field("f", &self.f())
+            .finish()
+    }
+}

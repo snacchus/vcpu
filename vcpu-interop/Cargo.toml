@@ -9,6 +9,9 @@ crate-type = ["cdylib"]
 
 [dependencies]
 vcpu = { path = ".." }
+util = { path = "../util" }
+util-derive = { path = "../util-derive" }
 vexfile = { path = "../vexfile" }
 vasm = { path = "../vasm" }
 num-traits = "0.2"
+num-derive = "0.2"

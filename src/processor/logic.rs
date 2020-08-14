@@ -2,24 +2,39 @@ use num::FromPrimitive;
 use std::num::Wrapping;
 
 use crate::memory::StorageMut;
-use crate::{constants, register_index, ALUFunct, ExitCode, OpCode, Register, RegisterId, Word};
+use crate::{
+    constants, register_index, ALUFunct, ExitCode, FLOPFunct, OpCode, Register, RegisterId, Word,
+};
 
 pub enum TickResult {
     Next,
-    Jump(u32),
+    Jump(u32, bool),
     Stop(ExitCode),
 }
 
 fn write_i(registers: &mut [Register], id: usize, value: Wrapping<i32>) {
-    registers[id].set_i(value.0);
+    if id != 0 {
+        registers[id].set_i(value.0);
+    }
 }
 
 fn write_u(registers: &mut [Register], id: usize, value: Wrapping<u32>) {
-    registers[id].set_u(value.0);
+    if id != 0 {
+        registers[id].set_u(value.0);
+    }
 }
 
 fn write_f(registers: &mut [Register], id: usize, value: f32) {
-    registers[id].set_f(value);
+    if id != 0 {
+        registers[id].set_f(value);
+    }
+}
+
+fn mul(registers: &mut [Register], id: usize, factor1: Wrapping<i32>, factor2: Wrapping<i32>) {
+    let product = factor1.0 as i64 * factor2.0 as i64;
+    registers[id].set_i(product as i32);
+    registers[register_index(RegisterId::RM)]
+        .set_i((product >> (std::mem::size_of::<i32>() * 8)) as i32);
 }
 
 fn div(
@@ -50,11 +65,6 @@ fn set_if(registers: &mut [Register], id: usize, condition: bool) {
     );
 }
 
-fn link(registers: &mut [Register], program_counter: Wrapping<u32>) {
-    let addr = program_counter + Wrapping(constants::WORD_BYTES as u32);
-    write_u(registers, register_index(RegisterId::RA), addr);
-}
-
 fn load(
     registers: &mut [Register],
     storage: &dyn StorageMut,
@@ -68,19 +78,8 @@ fn load(
         .is_ok()
 }
 
-fn store(
-    registers: &mut [Register],
-    storage: &mut dyn StorageMut,
-    id: usize,
-    address: Wrapping<u32>,
-    size: u32,
-) -> bool {
-    let value = registers[id].u();
-    storage.write(address.0, size, value).is_ok()
-}
-
-fn jump(new_addr: Wrapping<u32>) -> TickResult {
-    TickResult::Jump(new_addr.0)
+fn jump(new_addr: Wrapping<u32>, link: bool) -> TickResult {
+    TickResult::Jump(new_addr.0, link)
 }
 
 pub fn tick(
@@ -99,8 +98,9 @@ pub fn tick(
         let rs1id = ((instruction & constants::RS1_MASK) >> constants::RS1_OFFSET) as usize;
         let rs2id = ((instruction & constants::RS2_MASK) >> constants::RS2_OFFSET) as usize;
 
-        let rs1 = registers[rs1id];
-        let rs2 = registers[rs2id];
+        let rd = &registers[rdid];
+        let rs1 = &registers[rs1id];
+        let rs2 = &registers[rs2id];
 
         let rs1i = Wrapping(rs1.i());
         let rs2i = Wrapping(rs2.i());
@@ -109,10 +109,12 @@ pub fn tick(
         let rs1f = rs1.f();
         let rs2f = rs2.f();
 
-        let immediate = Wrapping(
-            ((instruction & constants::IMMEDIATE_MASK) >> constants::IMMEDIATE_OFFSET) as i32,
-        );
-        let immediateu = Wrapping(immediate.0 as u32);
+        let imm_i16 =
+            ((instruction & constants::IMMEDIATE_MASK) >> constants::IMMEDIATE_OFFSET) as i16;
+        let imm_u16 = imm_i16 as u16;
+        let imm_u = Wrapping(imm_u16 as u32);
+        let imm_i = Wrapping(imm_i16 as i32);
+        let imm_u_ex = Wrapping(imm_i.0 as u32);
 
         let mut address = (instruction & constants::ADDRESS_MASK) >> constants::ADDRESS_OFFSET;
 
@@ -140,7 +142,7 @@ pub fn tick(
                         }
 
                         ALUFunct::MUL => {
-                            write_i(registers, rdid, rs1i * rs2i);
+                            mul(registers, rdid, rs1i, rs2i);
                         }
 
                         ALUFunct::DIV => {
@@ -197,20 +199,20 @@ pub fn tick(
                             set_if(registers, rdid, rs1i >= rs2i);
                         }
 
-                        ALUFunct::FADD => {
-                            write_f(registers, rdid, rs1f + rs2f);
+                        ALUFunct::SLTU => {
+                            set_if(registers, rdid, rs1u < rs2u);
                         }
 
-                        ALUFunct::FSUB => {
-                            write_f(registers, rdid, rs1f - rs2f);
+                        ALUFunct::SGTU => {
+                            set_if(registers, rdid, rs1u > rs2u);
                         }
 
-                        ALUFunct::FMUL => {
-                            write_f(registers, rdid, rs1f * rs2f);
+                        ALUFunct::SLEU => {
+                            set_if(registers, rdid, rs1u <= rs2u);
                         }
 
-                        ALUFunct::FDIV => {
-                            write_f(registers, rdid, rs1f / rs2f);
+                        ALUFunct::SGEU => {
+                            set_if(registers, rdid, rs1u >= rs2u);
                         }
                     }
                 } else {
@@ -223,7 +225,7 @@ pub fn tick(
             }
 
             OpCode::CALL => {
-                // TODO
+                // TODO: define an interface for arbitrary syscalls (or figure out if they are necessary at all)
             }
 
             OpCode::COPY => {
@@ -231,11 +233,21 @@ pub fn tick(
             }
 
             OpCode::LI => {
-                write_i(registers, rdid, immediate);
+                write_i(registers, rdid, imm_i);
             }
 
             OpCode::LHI => {
-                write_i(registers, rdid, immediate << 16);
+                write_i(registers, rdid, imm_i << 16);
+            }
+
+            OpCode::SLO => {
+                let high = Wrapping(rd.u() & !constants::LOW_BITS_MASK);
+                write_u(registers, rdid, imm_u | high);
+            }
+
+            OpCode::SHI => {
+                let low = Wrapping(rd.u() & !constants::HIGH_BITS_MASK);
+                write_u(registers, rdid, (imm_u << 16) | low);
             }
 
             OpCode::LB => {
@@ -243,7 +255,7 @@ pub fn tick(
                     registers,
                     storage,
                     rdid,
-                    rs1u + immediateu,
+                    rs1u + imm_u_ex,
                     constants::BYTE_BYTES,
                 ) {
                     return TickResult::Stop(ExitCode::BadMemoryAccess);
@@ -255,7 +267,7 @@ pub fn tick(
                     registers,
                     storage,
                     rdid,
-                    rs1u + immediateu,
+                    rs1u + imm_u_ex,
                     constants::HALF_BYTES,
                 ) {
                     return TickResult::Stop(ExitCode::BadMemoryAccess);
@@ -267,7 +279,7 @@ pub fn tick(
                     registers,
                     storage,
                     rdid,
-                    rs1u + immediateu,
+                    rs1u + imm_u_ex,
                     constants::WORD_BYTES,
                 ) {
                     return TickResult::Stop(ExitCode::BadMemoryAccess);
@@ -275,69 +287,60 @@ pub fn tick(
             }
 
             OpCode::SB => {
-                if !store(
-                    registers,
-                    storage,
-                    rdid,
-                    rs1u + immediateu,
-                    constants::BYTE_BYTES,
-                ) {
+                if storage
+                    .write_byte((rs1u + imm_u_ex).0, rd.u() as u8)
+                    .is_err()
+                {
                     return TickResult::Stop(ExitCode::BadMemoryAccess);
                 }
             }
 
             OpCode::SH => {
-                if !store(
-                    registers,
-                    storage,
-                    rdid,
-                    rs1u + immediateu,
-                    constants::HALF_BYTES,
-                ) {
+                if storage
+                    .write_half((rs1u + imm_u_ex).0, rd.u() as u16)
+                    .is_err()
+                {
                     return TickResult::Stop(ExitCode::BadMemoryAccess);
                 }
             }
 
             OpCode::SW => {
-                if !store(
-                    registers,
-                    storage,
-                    rdid,
-                    rs1u + immediateu,
-                    constants::WORD_BYTES,
-                ) {
+                if storage
+                    .write_word((rs1u + imm_u_ex).0, rd.u() as u32)
+                    .is_err()
+                {
                     return TickResult::Stop(ExitCode::BadMemoryAccess);
                 }
             }
 
             OpCode::ADDI => {
-                write_i(registers, rdid, rs1i + immediate);
+                write_i(registers, rdid, rs1i + imm_i);
             }
 
             OpCode::SUBI => {
-                write_i(registers, rdid, rs1i - immediate);
+                write_i(registers, rdid, rs1i - imm_i);
             }
 
             OpCode::MULI => {
-                write_i(registers, rdid, rs1i * immediate);
+                mul(registers, rdid, rs1i, imm_i);
             }
 
             OpCode::DIVI => {
-                if !div(registers, rdid, rs1i, immediate) {
+                if !div(registers, rdid, rs1i, imm_i) {
                     return TickResult::Stop(ExitCode::DivisionByZero);
                 }
             }
 
             OpCode::ANDI => {
-                write_i(registers, rdid, rs1i & immediate);
+                write_i(registers, rdid, rs1i & imm_i);
             }
 
             OpCode::ORI => {
-                write_i(registers, rdid, rs1i | immediate);
+                write_i(registers, rdid, rs1i | imm_i);
             }
 
             OpCode::XORI => {
-                write_i(registers, rdid, rs1i ^ immediate);
+                write_i(registers, rdid, rs1i ^ imm_i);
             }
 
             OpCode::FLIP => {
@@ -345,75 +348,115 @@ pub fn tick(
             }
 
             OpCode::SLLI => {
-                write_i(registers, rdid, rs1i << immediateu.0 as usize);
+                write_i(registers, rdid, rs1i << imm_u_ex.0 as usize);
             }
 
             OpCode::SRLI => {
-                write_u(registers, rdid, rs1u >> immediateu.0 as usize);
+                write_u(registers, rdid, rs1u >> imm_u_ex.0 as usize);
             }
 
             OpCode::SRAI => {
-                write_i(registers, rdid, rs1i >> immediateu.0 as usize);
+                write_i(registers, rdid, rs1i >> imm_u_ex.0 as usize);
             }
 
             OpCode::SEQI => {
-                set_if(registers, rdid, rs1i == immediate);
+                set_if(registers, rdid, rs1i == imm_i);
             }
 
             OpCode::SNEI => {
-                set_if(registers, rdid, rs1i != immediate);
+                set_if(registers, rdid, rs1i != imm_i);
             }
 
             OpCode::SLTI => {
-                set_if(registers, rdid, rs1i < immediate);
+                set_if(registers, rdid, rs1i < imm_i);
             }
 
             OpCode::SGTI => {
-                set_if(registers, rdid, rs1i > immediate);
+                set_if(registers, rdid, rs1i > imm_i);
             }
 
             OpCode::SLEI => {
-                set_if(registers, rdid, rs1i <= immediate);
+                set_if(registers, rdid, rs1i <= imm_i);
             }
 
             OpCode::SGEI => {
-                set_if(registers, rdid, rs1i >= immediate);
+                set_if(registers, rdid, rs1i >= imm_i);
+            }
+
+            OpCode::SLTUI => {
+                set_if(registers, rdid, rs1u < imm_u);
+            }
+
+            OpCode::SGTUI => {
+                set_if(registers, rdid, rs1u > imm_u);
+            }
+
+            OpCode::SLEUI => {
+                set_if(registers, rdid, rs1u <= imm_u);
+            }
+
+            OpCode::SGEUI => {
+                set_if(registers, rdid, rs1u >= imm_u);
             }
 
             OpCode::BEZ => {
                 if rs1i.0 == 0 {
-                    return jump(program_counter + immediateu);
+                    return jump(program_counter + imm_u_ex, false);
                 }
             }
 
             OpCode::BNZ => {
                 if rs1i.0 != 0 {
-                    return jump(program_counter + immediateu);
+                    return jump(program_counter + imm_u_ex, false);
                 }
             }
 
             OpCode::JMP => {
-                return jump(program_counter + address);
+                return jump(program_counter + address, false);
             }
 
             OpCode::JL => {
-                link(registers, program_counter);
-                return jump(program_counter + address);
+                return jump(program_counter + address, true);
             }
 
             OpCode::JR => {
-                return jump(rs1u);
+                return jump(rs1u, false);
             }
 
             OpCode::JLR => {
-                link(registers, program_counter);
-                return jump(rs1u);
+                return jump(rs1u, true);
             }
 
             OpCode::ITOF => write_f(registers, rdid, rs1i.0 as f32),
 
             OpCode::FTOI => {
                 write_i(registers, rdid, Wrapping(rs1f as i32));
+            }
+
+            OpCode::FLOP => {
+                let funct_value = (instruction & constants::FUNCT_MASK) >> constants::FUNCT_OFFSET;
+                let funct = FLOPFunct::from_u32(funct_value);
+                if let Some(funct) = funct {
+                    match funct {
+                        FLOPFunct::FADD => {
+                            write_f(registers, rdid, rs1f + rs2f);
+                        }
+
+                        FLOPFunct::FSUB => {
+                            write_f(registers, rdid, rs1f - rs2f);
+                        }
+
+                        FLOPFunct::FMUL => {
+                            write_f(registers, rdid, rs1f * rs2f);
+                        }
+
+                        FLOPFunct::FDIV => {
+                            write_f(registers, rdid, rs1f / rs2f);
+                        }
+                    }
+                } else {
+                    return TickResult::Stop(ExitCode::InvalidOpcode);
+                }
             }
         }
     } else {

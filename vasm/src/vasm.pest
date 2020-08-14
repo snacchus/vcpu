@@ -31,6 +31,8 @@ int = { bin_uint | oct_uint | hex_uint | dec_int }
 exp = @{ ^"e" ~ int }
 float = @{ dec_int ~ (("." ~ dec_uint? ~ exp?) | exp) }
 
+// TODO: float literals
+
 underscore = _{ "_" }
 
 identifier = @{ ( ASCII_ALPHA | underscore ) ~ ( ASCII_ALPHANUMERIC | underscore )* }
@@ -47,6 +49,7 @@ data_short = ${ ".short" ~ token_sep ~ int_list }
 data_word = ${ ".word" ~ token_sep ~ int_list }
 
 // TODO: string data
+// TODO: float data
 
 data_element = {
     data_block |
@@ -59,6 +62,14 @@ labeled_data_element = !{ label? ~ data_element }
 
 data = ${ ".data" ~ token_sep ~ labeled_data_element? ~ (token_sep ~ labeled_data_element)* }
 
+// macros
+
+macro_push = { ^"PUSH" ~ register }
+macro_pop = { ^"POP" ~ register }
+macro_lwi = { ^"LWI" ~ register ~ "," ~ int }
+macro_lda = { ^"LDA" ~ register ~ "," ~ identifier }
+macro_lia = { ^"LIA" ~ register ~ "," ~ identifier }
+
 // instruction rules
 
 jump_target = { int | identifier }
@@ -66,20 +77,24 @@ jump_target = { int | identifier }
 register = ${ "$" ~ register_id }
 
 opcode_alu_sep = ${ opcode_alu ~ token_sep }
+opcode_flop_sep = ${ opcode_flop ~ token_sep }
 opcode_i_sep = ${ opcode_i ~ token_sep }
+opcode_iu_sep = ${ opcode_iu ~ token_sep }
 opcode_ds_sep = ${ opcode_ds ~ token_sep }
 opcode_li_sep = ${ opcode_li ~ token_sep }
-opcode_la_sep = ${ opcode_la ~ token_sep }
+opcode_si_sep = ${ opcode_si ~ token_sep }
 opcode_br_sep = ${ opcode_br ~ token_sep }
 opcode_jr_sep = ${ opcode_jr ~ token_sep }
 opcode_ls_sep = ${ opcode_ls ~ token_sep }
 opcode_j_sep = ${ opcode_j ~ token_sep }
 
 instruction_alu = { opcode_alu_sep ~ register ~ "," ~ register ~ "," ~ register }
+instruction_flop = { opcode_flop_sep ~ register ~ "," ~ register ~ "," ~ register }
 instruction_i = { opcode_i_sep ~ register ~ "," ~ register ~ "," ~ int }
+instruction_iu = { opcode_iu_sep ~ register ~ "," ~ register ~ "," ~ uint }
 instruction_ds = { opcode_ds_sep ~ register ~ "," ~ register }
 instruction_li = { opcode_li_sep ~ register ~ "," ~ int }
-instruction_la = { opcode_la_sep ~ register ~ "," ~ identifier }
+instruction_si = { opcode_si_sep ~ register ~ "," ~ uint }
 instruction_e = { opcode_e }
 instruction_br = { opcode_br_sep ~ register ~ "," ~ jump_target }
 instruction_jr = { opcode_jr_sep ~ register }
@@ -87,16 +102,23 @@ instruction_ls = { opcode_ls_sep ~ register ~ "," ~ int ~ "(" ~ register ~ ")" }
 instruction_j = { opcode_j_sep ~ jump_target }
 
 instruction = {
-    instruction_alu |
-    instruction_i   |
-    instruction_ds  |
-    instruction_li  |
-    instruction_la  |
-    instruction_e   |
-    instruction_br  |
-    instruction_jr  | 
-    instruction_ls  |
-    instruction_j
+    instruction_alu  |
+    instruction_flop |
+    instruction_i    |
+    instruction_iu   |
+    instruction_ds   |
+    instruction_li   |
+    instruction_si   |
+    instruction_e    |
+    instruction_br   |
+    instruction_jr   | 
+    instruction_ls   |
+    instruction_j    |
+    macro_push       |
+    macro_pop        |
+    macro_lwi        |
+    macro_lda        |
+    macro_lia
 }
 
 labeled_instruction = !{ label? ~ instruction }
@@ -157,6 +179,13 @@ opcode_alu = {
     ^"SGT"  |
     ^"SLE"  |
     ^"SGE"  |
+    ^"SLTU" |
+    ^"SGTU" |
+    ^"SLEU" |
+    ^"SGEU"
+}
+
+opcode_flop = {
     ^"FADD" |
     ^"FSUB" |
     ^"FMUL" |
@@ -164,22 +193,29 @@ opcode_alu = {
 }
 
 opcode_i = {
-    ^"ADDI" |
-    ^"SUBI" |
-    ^"MULI" |
-    ^"DIVI" |
-    ^"ANDI" |
-    ^"ORI"  |
-    ^"XORI" |
-    ^"SLLI" |
-    ^"SRLI" |
-    ^"SRAI" |
-    ^"SEQI" |
-    ^"SNEI" |
-    ^"SLTI" |
-    ^"SGTI" |
-    ^"SLEI" |
-    ^"SGEI" 
+    ^"ADDI"  |
+    ^"SUBI"  |
+    ^"MULI"  |
+    ^"DIVI"  |
+    ^"ANDI"  |
+    ^"ORI"   |
+    ^"XORI"  |
+    ^"SLLI"  |
+    ^"SRLI"  |
+    ^"SRAI"  |
+    ^"SEQI"  |
+    ^"SNEI"  |
+    ^"SLTI"  |
+    ^"SGTI"  |
+    ^"SLEI"  |
+    ^"SGEI"
+}
+
+opcode_iu = {
+    ^"SLTUI" |
+    ^"SGTUI" |
+    ^"SLEUI" |
+    ^"SGEUI"
 }
 
 opcode_ds = {
@@ -194,8 +230,9 @@ opcode_li = {
     ^"LHI"
 }
 
-opcode_la = {
-    ^"LA"
+opcode_si = {
+    ^"SLO" |
+    ^"SHI"
 }
 
 opcode_e = {

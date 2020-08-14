@@ -1,11 +1,13 @@
 [package]
-name = "vex"
+name = "util-derive"
 version = "0.1.0"
 authors = ["Dennis Heinze <dennisjp.heinze@gmail.com>"]
 edition = "2018"
 
+[lib]
+proc-macro = true
+
 [dependencies]
-clap = "~2.32.0"
-vcpu = { path = ".." }
-vasm = { path = "../vasm" }
-vexfile = { path = "../vexfile" }
+syn = "1.0"
+quote = "1.0"
+proc-macro2 = "1.0"

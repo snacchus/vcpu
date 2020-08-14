@@ -2,6 +2,10 @@ use super::{Storage, StorageMut};
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 
+// TODO: think about providing a more specialized version of this
+//       with a single chunk of fixed, main memory and a collection of
+//       custom devices
+
 /// Error type for [`CompositeMemory.mount`].
 ///
 /// [`CompositeMemory.mount`]: ./struct.CompositeMemory.html#method.mount
@@ -244,4 +248,17 @@ fn find_mount_index() {
         memory.find_mount_index(16, 21),
         Err(MountError::FragmentIntersection)
     );
+}
+
+#[test]
+fn access_mounted_fragment() {
+    let mut comp = CompositeMemory::new();
+    assert_eq!(comp.mount(0, "f0", vec![0u8; 64]), Ok(()));
+    assert_eq!(comp.mount(0xF1ED_0000, "f1", vec![0u8; 1]), Ok(()));
+    assert_eq!(comp.write_byte(0xF1ED_0001, 1), Err(()));
+    assert_eq!(comp.write_byte(0xF1ED_0000, 1), Ok(()));
+    let unmount_result = comp.unmount("f1");
+    assert!(unmount_result.is_some());
+    let fragment = unmount_result.unwrap();
+    assert_eq!(fragment.read_byte(0), Ok(1));
 }

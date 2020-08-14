@@ -1,6 +1,6 @@
 use byteorder::ByteOrder;
 use matches::*;
-use num::{Num, NumCast, Signed, Unsigned};
+use num::{Num, NumCast, Signed, ToPrimitive, Unsigned};
 use pest::iterators::Pair;
 use pest::{Parser, Span};
 use pest_derive::Parser;
@@ -8,10 +8,12 @@ use std::collections::HashMap;
 use std::mem;
 use std::num::ParseIntError;
 use std::str::FromStr;
+use util::ParseEnumError;
 use vcpu::*;
 use vexfile::Program;
 
-type Endian = byteorder::LittleEndian;
+// TODO: write documentation with a list of all mnemonics and their behavior
+// TODO: rename "opcode*" rules to "mnemonic*"
 
 pub type Error = pest::error::Error<crate::Rule>;
 
@@ -39,6 +41,12 @@ enum ParsedInstruction<'i> {
         opcode: OpCode,
         target: JumpTarget<'i, Address>,
     },
+
+    LoadInstructionAddress {
+        label: Span<'i>,
+        rd: RegisterId,
+        upper: bool,
+    },
 }
 
 type Result<T> = std::result::Result<T, Error>;
@@ -49,6 +57,14 @@ struct VASMParser;
 
 type LabelMap<'i> = HashMap<&'i str, u32>;
 type InstrVec<'i> = Vec<ParsedInstruction<'i>>;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SourceMapItem {
+    pub start_line: u32,
+    pub line_count: u32,
+}
+
+pub type SourceMap = Vec<SourceMapItem>;
 
 trait GetUnsigned: Signed {
     type Unsigned;
@@ -66,6 +82,54 @@ impl GetUnsigned for i32 {
     type Unsigned = u32;
 }
 
+trait ToPrimitiveTrunc: Sized {
+    fn to_i8(&self) -> i8;
+    fn to_i16(&self) -> i16;
+    fn to_i32(&self) -> i32;
+}
+
+macro_rules! impl_to_prim_trunc {
+    ($T:ty) => {
+        impl ToPrimitiveTrunc for $T {
+            #[inline]
+            fn to_i8(&self) -> i8 {
+                *self as i8
+            }
+            #[inline]
+            fn to_i16(&self) -> i16 {
+                *self as i16
+            }
+            #[inline]
+            fn to_i32(&self) -> i32 {
+                *self as i32
+            }
+        }
+    };
+}
+
+impl_to_prim_trunc!(u8);
+impl_to_prim_trunc!(u16);
+impl_to_prim_trunc!(u32);
+
+trait NumCastTrunc: Sized {
+    fn from<T: ToPrimitiveTrunc>(n: T) -> Self;
+}
+
+macro_rules! impl_num_cast_trunc {
+    ($T:ty, $conv:ident) => {
+        impl NumCastTrunc for $T {
+            #[inline]
+            fn from<N: ToPrimitiveTrunc>(n: N) -> $T {
+                n.$conv()
+            }
+        }
+    };
+}
+
+impl_num_cast_trunc!(i8, to_i8);
+impl_num_cast_trunc!(i16, to_i16);
+impl_num_cast_trunc!(i32, to_i32);
+
 fn process_num_lit<T>(pair: Pair<Rule>, base: u32) -> Result<T>
 where
     T: Num<FromStrRadixErr = ParseIntError>,
@@ -77,16 +141,12 @@ where
 
 fn process_unsigned_lit<T>(pair: Pair<Rule>, base: u32) -> Result<T>
 where
-    T: GetUnsigned + NumCast,
-    <T as GetUnsigned>::Unsigned: Num<FromStrRadixErr = ParseIntError> + NumCast,
+    T: GetUnsigned + NumCastTrunc,
+    <T as GetUnsigned>::Unsigned: Num<FromStrRadixErr = ParseIntError> + ToPrimitiveTrunc,
 {
-    let span = pair.as_span();
-    NumCast::from(process_num_lit::<T::Unsigned>(pair, base)?).ok_or_else(|| {
-        new_parser_error(
-            span,
-            "Parsing integer failed: value would overflow unsigned integer".to_owned(),
-        )
-    })
+    Ok(NumCastTrunc::from(process_num_lit::<T::Unsigned>(
+        pair, base,
+    )?))
 }
 
 fn process_uint<T>(pair: Pair<Rule>) -> Result<T>
@@ -105,8 +165,8 @@ where
 
 fn process_int<T>(pair: Pair<Rule>) -> Result<T>
 where
-    T: GetUnsigned + Num<FromStrRadixErr = ParseIntError> + NumCast,
-    <T as GetUnsigned>::Unsigned: Num<FromStrRadixErr = ParseIntError> + NumCast,
+    T: GetUnsigned + Num<FromStrRadixErr = ParseIntError> + NumCastTrunc,
+    <T as GetUnsigned>::Unsigned: Num<FromStrRadixErr = ParseIntError> + ToPrimitiveTrunc,
 {
     let inner = pair.into_inner().next().unwrap();
     match inner.as_rule() {
@@ -120,8 +180,8 @@ where
 
 fn process_int_list<T>(pair: Pair<Rule>, data: &mut Vec<u8>) -> Result<()>
 where
-    T: GetUnsigned + Num<FromStrRadixErr = ParseIntError> + NumCast,
-    <T as GetUnsigned>::Unsigned: Num<FromStrRadixErr = ParseIntError> + NumCast,
+    T: GetUnsigned + Num<FromStrRadixErr = ParseIntError> + ToPrimitive + NumCastTrunc,
+    <T as GetUnsigned>::Unsigned: Num<FromStrRadixErr = ParseIntError> + ToPrimitiveTrunc,
 {
     let pairs = pair.into_inner();
     let element_size = mem::size_of::<T>();
@@ -136,12 +196,12 @@ where
     for int in pairs {
         let span = int.as_span();
         let value = process_int::<T>(int)?
-            .to_u64()
+            .to_i64()
             .ok_or_else(|| new_parser_error(span, "Cannot cast integer".to_owned()))?;
         let current_size = data.len();
         let new_size = current_size + element_size;
         data.resize(new_size, 0u8);
-        Endian::write_uint(&mut data[current_size..new_size], value, element_size);
+        Endian::write_int(&mut data[current_size..new_size], value, element_size);
     }
     Ok(())
 }
@@ -235,8 +295,8 @@ fn process_enum<T: FromStr<Err = ParseEnumError>>(pair: Pair<Rule>) -> Result<T>
 
 fn process_jump_target<T>(pair: Pair<Rule>) -> Result<JumpTarget<T>>
 where
-    T: GetUnsigned + Num<FromStrRadixErr = ParseIntError> + NumCast + Copy,
-    <T as GetUnsigned>::Unsigned: Num<FromStrRadixErr = ParseIntError> + NumCast,
+    T: GetUnsigned + Num<FromStrRadixErr = ParseIntError> + NumCastTrunc + Copy,
+    <T as GetUnsigned>::Unsigned: Num<FromStrRadixErr = ParseIntError> + ToPrimitiveTrunc,
 {
     let inner = pair.into_inner().next().unwrap();
     let rule = inner.as_rule();
@@ -252,11 +312,14 @@ fn process_instruction<'i>(
     pair: Pair<'i, Rule>,
     instr: &mut InstrVec<'i>,
     data_labels: &LabelMap<'i>,
-) -> Result<()> {
+    data_offset: u32,
+) -> Result<usize> {
     let span = pair.as_span();
     let inner = pair.into_inner().next().unwrap();
     let rule = inner.as_rule();
     let mut pairs = inner.into_inner();
+
+    let old_len = instr.len();
 
     match rule {
         Rule::instruction_alu => {
@@ -264,8 +327,17 @@ fn process_instruction<'i>(
             let rd = process_enum(pairs.next().unwrap())?;
             let rs1 = process_enum(pairs.next().unwrap())?;
             let rs2 = process_enum(pairs.next().unwrap())?;
-            instr.push(ParsedInstruction::Complete(instr_alu(
+            instr.push(ParsedInstruction::Complete(make_alu_instruction(
                 alu_funct, rd, rs1, rs2,
+            )));
+        }
+        Rule::instruction_flop => {
+            let flop_funct = process_enum(pairs.next().unwrap())?;
+            let rd = process_enum(pairs.next().unwrap())?;
+            let rs1 = process_enum(pairs.next().unwrap())?;
+            let rs2 = process_enum(pairs.next().unwrap())?;
+            instr.push(ParsedInstruction::Complete(make_flop_instruction(
+                flop_funct, rd, rs1, rs2,
             )));
         }
         Rule::instruction_i => {
@@ -273,52 +345,55 @@ fn process_instruction<'i>(
             let rd = process_enum(pairs.next().unwrap())?;
             let rs1 = process_enum(pairs.next().unwrap())?;
             let immediate = process_int(pairs.next().unwrap())?;
-            instr.push(ParsedInstruction::Complete(instr_i(
+            instr.push(ParsedInstruction::Complete(make_i_instruction(
                 opcode, rd, rs1, immediate,
+            )));
+        }
+        Rule::instruction_iu => {
+            let opcode = process_enum(pairs.next().unwrap())?;
+            let rd = process_enum(pairs.next().unwrap())?;
+            let rs1 = process_enum(pairs.next().unwrap())?;
+            let immediate = process_uint::<u16>(pairs.next().unwrap())?;
+            instr.push(ParsedInstruction::Complete(make_i_instruction(
+                opcode,
+                rd,
+                rs1,
+                immediate as i16,
             )));
         }
         Rule::instruction_ds => {
             let opcode = process_enum(pairs.next().unwrap())?;
             let rd = process_enum(pairs.next().unwrap())?;
             let rs1 = process_enum(pairs.next().unwrap())?;
-            instr.push(ParsedInstruction::Complete(instr_i(opcode, rd, rs1, 0i16)));
+            instr.push(ParsedInstruction::Complete(make_i_instruction(
+                opcode, rd, rs1, 0i16,
+            )));
         }
         Rule::instruction_li => {
             let opcode = process_enum(pairs.next().unwrap())?;
             let rd = process_enum(pairs.next().unwrap())?;
             let immediate = process_int(pairs.next().unwrap())?;
-            instr.push(ParsedInstruction::Complete(instr_i(
+            instr.push(ParsedInstruction::Complete(make_i_instruction(
                 opcode,
                 rd,
                 RegisterId::ZERO,
                 immediate,
             )));
         }
-        Rule::instruction_la => {
-            pairs.next();
+        Rule::instruction_si => {
+            let opcode = process_enum(pairs.next().unwrap())?;
             let rd = process_enum(pairs.next().unwrap())?;
-            let label_span = pairs.next().unwrap().as_span();
-            let label = label_span.as_str();
-            let address = data_labels.get(label).ok_or_else(|| {
-                new_parser_error(label_span, "Data label was not found".to_owned())
-            })?;
-
-            instr.push(ParsedInstruction::Complete(instr_i(
-                OpCode::LI,
+            let immediate = process_uint::<u16>(pairs.next().unwrap())?;
+            instr.push(ParsedInstruction::Complete(make_i_instruction(
+                opcode,
                 rd,
                 RegisterId::ZERO,
-                *address as i16,
-            )));
-            instr.push(ParsedInstruction::Complete(instr_i(
-                OpCode::LHI,
-                rd,
-                RegisterId::ZERO,
-                (*address >> 16) as i16,
+                immediate as i16,
             )));
         }
         Rule::instruction_e => {
             let opcode = process_enum_inner(&pairs.next().unwrap())?;
-            instr.push(ParsedInstruction::Complete(instr_i(
+            instr.push(ParsedInstruction::Complete(make_i_instruction(
                 opcode,
                 RegisterId::ZERO,
                 RegisterId::ZERO,
@@ -338,7 +413,7 @@ fn process_instruction<'i>(
         Rule::instruction_jr => {
             let opcode = process_enum(pairs.next().unwrap())?;
             let rs1 = process_enum(pairs.next().unwrap())?;
-            instr.push(ParsedInstruction::Complete(instr_i(
+            instr.push(ParsedInstruction::Complete(make_i_instruction(
                 opcode,
                 RegisterId::ZERO,
                 rs1,
@@ -350,7 +425,7 @@ fn process_instruction<'i>(
             let rd = process_enum(pairs.next().unwrap())?;
             let immediate = process_int(pairs.next().unwrap())?;
             let rs1 = process_enum(pairs.next().unwrap())?;
-            instr.push(ParsedInstruction::Complete(instr_i(
+            instr.push(ParsedInstruction::Complete(make_i_instruction(
                 opcode, rd, rs1, immediate,
             )));
         }
@@ -359,41 +434,143 @@ fn process_instruction<'i>(
             let target = process_jump_target(pairs.next().unwrap())?;
             instr.push(ParsedInstruction::Jump { opcode, target });
         }
+        Rule::macro_push => {
+            let register = process_enum(pairs.next().unwrap())?;
+            instr.push(ParsedInstruction::Complete(make_i_instruction(
+                OpCode::SW,
+                register,
+                RegisterId::SP,
+                -4i16,
+            )));
+            instr.push(ParsedInstruction::Complete(make_i_instruction(
+                OpCode::SUBI,
+                RegisterId::SP,
+                RegisterId::SP,
+                4i16,
+            )));
+        }
+        Rule::macro_pop => {
+            let register = process_enum(pairs.next().unwrap())?;
+            instr.push(ParsedInstruction::Complete(make_i_instruction(
+                OpCode::LW,
+                register,
+                RegisterId::SP,
+                0i16,
+            )));
+            instr.push(ParsedInstruction::Complete(make_i_instruction(
+                OpCode::ADDI,
+                RegisterId::SP,
+                RegisterId::SP,
+                4i16,
+            )));
+        }
+        Rule::macro_lwi => {
+            let register = process_enum(pairs.next().unwrap())?;
+            let value: i32 = process_int(pairs.next().unwrap())?;
+            instr.push(ParsedInstruction::Complete(make_i_instruction(
+                OpCode::SLO,
+                register,
+                RegisterId::ZERO,
+                value as i16,
+            )));
+            instr.push(ParsedInstruction::Complete(make_i_instruction(
+                OpCode::SHI,
+                register,
+                RegisterId::ZERO,
+                (value >> 16) as i16,
+            )));
+        }
+        Rule::macro_lda => {
+            let rd = process_enum(pairs.next().unwrap())?;
+            let label_span = pairs.next().unwrap().as_span();
+            let label = label_span.as_str();
+            let address = data_labels.get(label).ok_or_else(|| {
+                new_parser_error(label_span, "Data label was not found".to_owned())
+            })?;
+            let offset_address = *address + data_offset;
+
+            instr.push(ParsedInstruction::Complete(make_i_instruction(
+                OpCode::SLO,
+                rd,
+                RegisterId::ZERO,
+                offset_address as i16,
+            )));
+            instr.push(ParsedInstruction::Complete(make_i_instruction(
+                OpCode::SHI,
+                rd,
+                RegisterId::ZERO,
+                (offset_address >> 16) as i16,
+            )));
+        }
+        Rule::macro_lia => {
+            let rd = process_enum(pairs.next().unwrap())?;
+            let label = pairs.next().unwrap();
+
+            instr.push(ParsedInstruction::LoadInstructionAddress {
+                label: label.as_span(),
+                rd,
+                upper: false,
+            });
+            instr.push(ParsedInstruction::LoadInstructionAddress {
+                label: label.as_span(),
+                rd,
+                upper: true,
+            });
+        }
         _ => unreachable!(),
     }
 
     let max_size = (u32::max_value() / constants::WORD_BYTES) as usize - 1;
+    let new_len = instr.len();
 
-    if instr.len() > max_size {
+    if new_len > max_size {
         Err(new_parser_error(
             span,
             format!("Instructions exceed maximum size of {} bytes", max_size),
         ))
     } else {
-        Ok(())
+        Ok(new_len - old_len)
     }
 }
 
 fn process_instructions<'i>(
     pair: Pair<'i, Rule>,
     data_labels: &LabelMap<'i>,
-) -> Result<(InstrVec<'i>, LabelMap<'i>)> {
+    data_offset: u32,
+) -> Result<(InstrVec<'i>, LabelMap<'i>, SourceMap)> {
     debug_assert_matches!(pair.as_rule(), Rule::instructions);
 
     let mut instructions = Vec::new();
     let mut labels = HashMap::new();
+    let mut source_map = Vec::new();
 
     for labeled_instruction in pair.into_inner() {
+        let span = labeled_instruction.as_span();
+        let start_line = span.start_pos().line_col().0 as u32;
+        let end_line = span.end_pos().line_col().0 as u32;
+        let line_count = end_line - start_line + 1;
+        let source_map_item = SourceMapItem {
+            start_line,
+            line_count,
+        };
+
         process_labeled_element(
             labeled_instruction,
             &mut labels,
             Rule::instruction,
             instructions.len() as u32,
-            |p| process_instruction(p, &mut instructions, &data_labels),
+            |p| {
+                let count = process_instruction(p, &mut instructions, &data_labels, data_offset)?;
+                for _ in 0..count {
+                    source_map.push(source_map_item);
+                }
+
+                Ok(())
+            },
         )?;
     }
 
-    Ok((instructions, labels))
+    Ok((instructions, labels, source_map))
 }
 
 fn resolve_jump_target<T: NumCast + Num + Copy>(
@@ -428,7 +605,7 @@ fn finalize_instruction(
             ref opcode,
             ref rs1,
             ref target,
-        } => instr_i(
+        } => make_i_instruction(
             *opcode,
             RegisterId::ZERO,
             *rs1,
@@ -437,10 +614,26 @@ fn finalize_instruction(
         ParsedInstruction::Jump {
             ref opcode,
             ref target,
-        } => instr_j(
+        } => make_j_instruction(
             *opcode,
             resolve_jump_target(labels, &target, current_instr)?,
         ),
+        ParsedInstruction::LoadInstructionAddress {
+            ref label,
+            ref rd,
+            ref upper,
+        } => {
+            let address = *labels
+                .get(label.as_str())
+                .ok_or_else(|| new_parser_error(label.clone(), "Label not found".to_owned()))?
+                as u32
+                * constants::WORD_BYTES;
+            if *upper {
+                make_i_instruction(OpCode::SHI, *rd, RegisterId::ZERO, (address >> 16) as i16)
+            } else {
+                make_i_instruction(OpCode::SLO, *rd, RegisterId::ZERO, address as i16)
+            }
+        }
     })
 }
 
@@ -458,15 +651,20 @@ fn assemble_instructions(instr: &[ParsedInstruction], labels: &LabelMap) -> Resu
     Ok(result)
 }
 
-fn assemble_parsed(pair: Pair<Rule>) -> Result<Program> {
+fn assemble_parsed(pair: Pair<Rule>, data_offset: u32) -> Result<(Program, SourceMap)> {
     let mut pairs = pair.into_inner();
 
     let (data, data_labels) = process_data(pairs.next().unwrap())?;
-    let (instr, instr_labels) = process_instructions(pairs.next().unwrap(), &data_labels)?;
+    let (instr, instr_labels, source_map) =
+        process_instructions(pairs.next().unwrap(), &data_labels, data_offset)?;
 
-    Ok(Program::from(
-        data,
-        assemble_instructions(&instr, &instr_labels)?,
+    Ok((
+        Program::from(
+            data_offset,
+            assemble_instructions(&instr, &instr_labels)?,
+            data,
+        ),
+        source_map,
     ))
 }
 
@@ -474,8 +672,12 @@ fn parse(input: &str) -> Result<Pair<Rule>> {
     Ok(VASMParser::parse(Rule::program, input)?.next().unwrap())
 }
 
-pub fn assemble(input: &str) -> Result<Program> {
-    assemble_parsed(parse(input)?)
+pub fn assemble_addressed(input: &str, data_offset: u32) -> Result<(Program, SourceMap)> {
+    assemble_parsed(parse(input)?, data_offset)
+}
+
+pub fn assemble(input: &str) -> Result<(Program, SourceMap)> {
+    assemble_addressed(input, 0u32)
 }
 
 #[cfg(test)]

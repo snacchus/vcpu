@@ -36,4 +36,8 @@ pub const FUNCT_OFFSET: u32 = 0;
 pub const IMMEDIATE_OFFSET: u32 = 0;
 pub const ADDRESS_OFFSET: u32 = 0;
 
+// TODO: generate this automatically using derive macro (enum variant count)
 pub const REGISTER_COUNT: usize = 32;
+
+pub const LOW_BITS_MASK: u32 = 0x0000_FFFF;
+pub const HIGH_BITS_MASK: u32 = 0xFFFF_0000;

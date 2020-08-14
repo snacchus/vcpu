@@ -248,6 +248,21 @@ fn instruction_alu() {
 }
 
 #[test]
+fn instruction_flop() {
+    parses_to! {
+        parser: VASMParser,
+        input: "FDIV $s0,$V1, $a4",
+        rule: Rule::instruction_flop,
+        tokens: [ instruction_flop(0, 17, [
+            opcode_flop_sep(0, 5, [ opcode_flop(0, 4) ]),
+            register(5, 8, [ register_id(6, 8) ]),
+            register(9, 12, [ register_id(10, 12) ]),
+            register(14, 17, [ register_id(15, 17) ])
+        ]) ]
+    };
+}
+
+#[test]
 fn instruction_i() {
     parses_to! {
         parser: VASMParser,
@@ -258,6 +273,21 @@ fn instruction_i() {
             register(6, 11, [ register_id(7, 11) ]),
             register(12, 15, [ register_id(13, 15) ]),
             int(17, 21, [ dec_int(17, 21) ])
+        ]) ]
+    };
+}
+
+#[test]
+fn instruction_iu() {
+    parses_to! {
+        parser: VASMParser,
+        input: "SLTUI  $t4,  $V1,3997",
+        rule: Rule::instruction_iu,
+        tokens: [ instruction_iu(0, 21, [
+            opcode_iu_sep(0, 7, [ opcode_iu(0, 5) ]),
+            register(7, 10, [ register_id(8, 10) ]),
+            register(13, 16, [ register_id(14, 16) ]),
+            uint(17, 21, [ dec_uint(17, 21) ])
         ]) ]
     };
 }
@@ -291,15 +321,15 @@ fn instruction_li() {
 }
 
 #[test]
-fn instruction_la() {
+fn instruction_si() {
     parses_to! {
         parser: VASMParser,
-        input: "la $s4, f_44ash__0",
-        rule: Rule::instruction_la,
-        tokens: [ instruction_la(0, 18, [
-            opcode_la_sep(0, 3, [ opcode_la(0, 2) ]),
-            register(3, 6, [ register_id(4, 6) ]),
-            identifier(8, 18)
+        input: "SHI $T5, 0x2345",
+        rule: Rule::instruction_si,
+        tokens: [ instruction_si(0, 15, [
+            opcode_si_sep(0, 4, [ opcode_si(0, 3) ]),
+            register(4, 7, [ register_id(5, 7) ]),
+            uint(9, 15, [ hex_uint(9, 15, [ hex_lit(11, 15) ]) ])
         ]) ]
     };
 }
@@ -384,6 +414,69 @@ fn instruction_j() {
         tokens: [ instruction_j(0, 12, [
             opcode_j_sep(0, 3, [ opcode_j(0, 2) ]),
             jump_target(3, 12, [ identifier(3, 12) ])
+        ]) ]
+    };
+}
+
+#[test]
+fn macro_push() {
+    parses_to! {
+        parser: VASMParser,
+        input: "PUSH  $RA ",
+        rule: Rule::macro_push,
+        tokens: [ macro_push(0, 9, [
+            register(6, 9, [ register_id(7, 9) ])
+        ])]
+    }
+}
+
+#[test]
+fn macro_pop() {
+    parses_to! {
+        parser: VASMParser,
+        input: "POP $V0",
+        rule: Rule::macro_pop,
+        tokens: [ macro_pop(0, 7, [
+            register(4, 7, [ register_id(5, 7) ])
+        ])]
+    }
+}
+
+#[test]
+fn macro_lwi() {
+    parses_to! {
+        parser: VASMParser,
+        input: "lwi $T5,  0xF123f234",
+        rule: Rule::macro_lwi,
+        tokens: [ macro_lwi(0, 20, [
+            register(4, 7, [ register_id(5, 7) ]),
+            int(10, 20, [ hex_uint(10, 20, [ hex_lit(12, 20) ]) ])
+        ]) ]
+    };
+}
+
+#[test]
+fn macro_lda() {
+    parses_to! {
+        parser: VASMParser,
+        input: "lda $s4, f_44ash__0",
+        rule: Rule::macro_lda,
+        tokens: [ macro_lda(0, 19, [
+            register(4, 7, [ register_id(5, 7) ]),
+            identifier(9, 19)
+        ]) ]
+    };
+}
+
+#[test]
+fn macro_lia() {
+    parses_to! {
+        parser: VASMParser,
+        input: "lia $s4, f_44ash__0",
+        rule: Rule::macro_lia,
+        tokens: [ macro_lia(0, 19, [
+            register(4, 7, [ register_id(5, 7) ]),
+            identifier(9, 19)
         ]) ]
     };
 }
