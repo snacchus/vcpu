@@ -214,6 +214,62 @@ pub unsafe extern "C" fn vcpu_memory_write(
     })
 }
 
+unsafe fn memory_get(
+    memory: *const Memory,
+    address: u32,
+    size: u32,
+    value: *mut u32,
+) -> VCPUResult {
+    (*memory).try_use(|variant| {
+        let result = match variant {
+            MemoryVariant::Plain(inner) => inner.read(address, size),
+            MemoryVariant::IO(inner) => inner.read(address, size),
+            MemoryVariant::Composite(inner) => inner.read(address, size),
+        };
+
+        match result {
+            Ok(v) => {
+                *value = v;
+                VCPUResult::Ok
+            }
+            Err(_) => VCPUResult::OutOfRange,
+        }
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn vcpu_memory_get_word(
+    memory: *const Memory,
+    address: u32,
+    value: *mut u32,
+) -> VCPUResult {
+    memory_get(memory, address, constants::WORD_BYTES, value)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn vcpu_memory_get_half(
+    memory: *const Memory,
+    address: u32,
+    value: *mut u16,
+) -> VCPUResult {
+    let mut v = 0u32;
+    let result = memory_get(memory, address, constants::HALF_BYTES, &mut v);
+    *value = v as u16;
+    result
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn vcpu_memory_get_byte(
+    memory: *const Memory,
+    address: u32,
+    value: *mut u8,
+) -> VCPUResult {
+    let mut v = 0u32;
+    let result = memory_get(memory, address, constants::BYTE_BYTES, &mut v);
+    *value = v as u8;
+    result
+}
+
 unsafe fn memory_set(memory: *mut Memory, address: u32, size: u32, value: u32) -> VCPUResult {
     (*memory).try_use_mut(|variant| {
         let result = match variant {
