@@ -9,13 +9,13 @@ fn write_read() {
         30, 27, 34, 50, 91, 83, 49, 5, 6, 134, 61, 2, 6, 239, 34, 8, 15,
     ];
 
-    let program_orig = Program::from(0, data, instructions);
+    let executable_orig = Executable::from(0, data, instructions);
 
-    write_file(path, &program_orig).unwrap();
+    write_file(path, &executable_orig).unwrap();
 
-    let program_read = read_file(path).unwrap();
+    let executable_read = read_file(path).unwrap();
 
-    assert_eq!(program_orig, program_read);
+    assert_eq!(executable_orig, executable_read);
 
     std::fs::remove_file(path).unwrap();
 }

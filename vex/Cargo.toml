@@ -1,5 +1,5 @@
 [package]
-name = "vexfile"
+name = "vex"
 version = "0.1.0"
 authors = ["Dennis Heinze <dennisjp.heinze@gmail.com>"]
 edition = "2018"

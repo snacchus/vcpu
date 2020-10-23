@@ -6,7 +6,7 @@ use util_derive::InteropGetName;
 
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, FromPrimitive, InteropGetName)]
-pub enum VCPUResult {
+pub enum VcpuResult {
     UnknownError = -1,
     Ok = 0,
     InvalidType = 1,
@@ -16,19 +16,19 @@ pub enum VCPUResult {
     FragmentIntersection = 5,
     KeyAlreadyExists = 6,
     OutOfRange = 7,
-    ProgramLoadFailed = 8,
-    ProgramSaveFailed = 9,
+    ExecutableLoadFailed = 8,
+    ExecutableSaveFailed = 9,
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_result_get_description(
     result: i32,
     desc: *mut *const c_char,
-) -> VCPUResult {
-    if let Some(result) = VCPUResult::from_i32(result) {
+) -> VcpuResult {
+    if let Some(result) = VcpuResult::from_i32(result) {
         *desc = result.interop_name().as_ptr() as *const c_char;
-        VCPUResult::OutOfRange
+        VcpuResult::OutOfRange
     } else {
-        VCPUResult::OutOfRange
+        VcpuResult::OutOfRange
     }
 }

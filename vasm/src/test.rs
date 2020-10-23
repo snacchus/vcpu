@@ -1,8 +1,6 @@
-use crate::{
-    assemble, process_data_element, JumpTarget, ParsedInstruction, Program, Rule, SourceMapItem,
-    VASMParser,
-};
-use ::pest::{error::Error as PestError, iterators::Pair, Parser, Span};
+use crate::instructions::*;
+use crate::*;
+use ::pest::{iterators::Pair, Parser, Span};
 use byteorder::ByteOrder;
 use std::collections::HashMap;
 use vcpu::*;
@@ -19,7 +17,7 @@ macro_rules! hashmap {
     }}
 }
 
-fn parse_rule(rule: Rule, input: &str) -> Result<Pair<Rule>, PestError<Rule>> {
+pub fn parse_rule(rule: Rule, input: &str) -> Result<Pair<Rule>> {
     Ok(VASMParser::parse(rule, input)?.next().unwrap())
 }
 
@@ -35,7 +33,7 @@ fn large_unsigned_literal() {
     ];
 
     let pair = parse_rule(Rule::instructions, input).unwrap();
-    let (instr, _, _) = super::process_instructions(pair, &HashMap::new(), 0).unwrap();
+    let (instr, _, _) = process_instructions(pair, &HashMap::new(), 0).unwrap();
 
     assert_eq!(instr, expected_instr);
 }
@@ -58,7 +56,7 @@ HALT";
     let expected_labels = HashMap::new();
 
     let pair = parse_rule(Rule::instructions, input).unwrap();
-    let (instr, labels, _) = super::process_instructions(pair, &HashMap::new(), 0).unwrap();
+    let (instr, labels, _) = process_instructions(pair, &HashMap::new(), 0).unwrap();
 
     assert_eq!(instr, expected_instr);
     assert_eq!(labels, expected_labels);
@@ -78,7 +76,7 @@ end:  HALT";
     let expected_instr = vec![
         ParsedInstruction::Complete(instr_i!(SLTI, T2, T0, 32)),
         ParsedInstruction::Branch {
-            opcode: OpCode::BEZ,
+            opcode: Opcode::BEZ,
             rs1: RegisterId::T2,
             target: JumpTarget::Label(Span::new(input, 54, 57).unwrap()),
         },
@@ -86,7 +84,7 @@ end:  HALT";
         ParsedInstruction::Complete(instr_i!(SW, T0, T1, 0)),
         ParsedInstruction::Complete(instr_i!(ADDI, T0, T0, 1)),
         ParsedInstruction::Jump {
-            opcode: OpCode::JMP,
+            opcode: Opcode::JMP,
             target: JumpTarget::Label(Span::new(input, 137, 141).unwrap()),
         },
         ParsedInstruction::Complete(instr_i!(HALT, ZERO, ZERO, 0)),
@@ -98,14 +96,14 @@ end:  HALT";
     ];
 
     let pair = parse_rule(Rule::instructions, input).unwrap();
-    let (instr, labels, _) = super::process_instructions(pair, &HashMap::new(), 0).unwrap();
+    let (instr, labels, _) = process_instructions(pair, &HashMap::new(), 0).unwrap();
 
     assert_eq!(instr, expected_instr);
     assert_eq!(labels, expected_labels);
 }
 
 fn transmute_vec(vec: Vec<Word>) -> Vec<u8> {
-    let mut byte_vec = vec![0; vec.len() * constants::WORD_BYTES as usize];
+    let mut byte_vec = vec![0; vec.len() * WORD_BYTES as usize];
     Endian::write_u32_into(&vec[..], &mut byte_vec[..]);
     byte_vec
 }
@@ -135,9 +133,12 @@ end:  HALT";
         instr_i!(HALT, ZERO, ZERO, 0),
     ]);
 
-    let (program, source_map) = assemble(input).unwrap();
+    let (executable, source_map) = assemble(input).unwrap();
 
-    assert_eq!(program, Program::from(0u32, expected_instr, expected_data));
+    assert_eq!(
+        executable,
+        Executable::from(0u32, expected_instr, expected_data)
+    );
     assert_eq!(
         source_map,
         vec![
@@ -269,8 +270,8 @@ HALT";
         instr_i!(HALT, ZERO, ZERO, 0),
     ]);
 
-    let (program, _) = assemble(input).unwrap();
-    assert_eq!(program.instructions(), &expected_instr[..]);
+    let (executable, _) = assemble(input).unwrap();
+    assert_eq!(executable.instructions(), &expected_instr[..]);
 }
 
 #[test]
@@ -287,8 +288,8 @@ HALT";
         instr_i!(HALT, ZERO, ZERO, 0),
     ]);
 
-    let (program, _) = assemble(input).unwrap();
-    assert_eq!(program.instructions(), &expected_instr[..]);
+    let (executable, _) = assemble(input).unwrap();
+    assert_eq!(executable.instructions(), &expected_instr[..]);
 }
 
 #[test]
@@ -304,8 +305,8 @@ HALT";
         instr_i!(HALT, ZERO, ZERO, 0),
     ]);
 
-    let (program, _) = assemble(input).unwrap();
-    assert_eq!(program.instructions(), &expected_instr[..]);
+    let (executable, _) = assemble(input).unwrap();
+    assert_eq!(executable.instructions(), &expected_instr[..]);
 }
 
 #[test]
@@ -321,8 +322,8 @@ HALT";
         instr_i!(HALT, ZERO, ZERO, 0),
     ]);
 
-    let (program, _) = assemble(input).unwrap();
-    assert_eq!(program.instructions(), &expected_instr[..]);
+    let (executable, _) = assemble(input).unwrap();
+    assert_eq!(executable.instructions(), &expected_instr[..]);
 }
 
 // TODO: add loading macro optimizations (only use one instruction when possible)
@@ -340,11 +341,11 @@ HALT";
         instr_i!(HALT, ZERO, ZERO, 0),
     ]);
 
-    let (program, _) = assemble(input).unwrap();
-    assert_eq!(program.instructions(), &expected_instr[..]);
+    let (executable, _) = assemble(input).unwrap();
+    assert_eq!(executable.instructions(), &expected_instr[..]);
 }
 
-// TODO: fix this test
+// TODO: fix this test (requires messing with integer parsing)
 // #[test]
 // fn macro_lwi_unsigned() {
 //     let input = ".data
@@ -358,8 +359,8 @@ HALT";
 //         instr_i!(HALT, ZERO, ZERO, 0),
 //     ]);
 
-//     let (program, _) = assemble(input).unwrap();
-//     assert_eq!(program.instructions(), &expected_instr[..]);
+//     let (executable, _) = assemble(input).unwrap();
+//     assert_eq!(executable.instructions(), &expected_instr[..]);
 // }
 
 #[test]
@@ -377,8 +378,8 @@ HALT";
         instr_i!(HALT, ZERO, ZERO, 0),
     ]);
 
-    let (program, _) = assemble(input).unwrap();
-    assert_eq!(program.instructions(), &expected_instr[..]);
+    let (executable, _) = assemble(input).unwrap();
+    assert_eq!(executable.instructions(), &expected_instr[..]);
 }
 
 #[test]
@@ -398,72 +399,6 @@ HALT";
         instr_i!(HALT, ZERO, ZERO, 0),
     ]);
 
-    let (program, _) = assemble(input).unwrap();
-    assert_eq!(program.instructions(), &expected_instr[..]);
-}
-
-#[test]
-fn large_hexadecimal_data_word() {
-    let input = ".word 0xFFFFFFFF";
-    let mut output = Vec::new();
-
-    let pair = parse_rule(Rule::data_element, input).unwrap();
-    process_data_element(pair, &mut output).unwrap();
-
-    assert_eq!([0xFF, 0xFF, 0xFF, 0xFF], &output[..]);
-}
-
-#[test]
-fn large_hexadecimal_data_short() {
-    let input = ".short 0xFFFF";
-    let mut output = Vec::new();
-
-    let pair = parse_rule(Rule::data_element, input).unwrap();
-    process_data_element(pair, &mut output).unwrap();
-
-    assert_eq!([0xFF, 0xFF], &output[..]);
-}
-
-#[test]
-fn large_hexadecimal_data_byte() {
-    let input = ".byte 0xFF";
-    let mut output = Vec::new();
-
-    let pair = parse_rule(Rule::data_element, input).unwrap();
-    process_data_element(pair, &mut output).unwrap();
-
-    assert_eq!([0xFF], &output[..]);
-}
-
-#[test]
-fn negative_signed_data_word() {
-    let input = ".word -1234";
-    let mut output = Vec::new();
-
-    let pair = parse_rule(Rule::data_element, input).unwrap();
-    process_data_element(pair, &mut output).unwrap();
-
-    assert_eq!([0x2E, 0xFB, 0xFF, 0xFF], &output[..]);
-}
-
-#[test]
-fn negative_signed_data_short() {
-    let input = ".short -1234";
-    let mut output = Vec::new();
-
-    let pair = parse_rule(Rule::data_element, input).unwrap();
-    process_data_element(pair, &mut output).unwrap();
-
-    assert_eq!([0x2E, 0xFB], &output[..]);
-}
-
-#[test]
-fn negative_signed_data_byte() {
-    let input = ".byte -123";
-    let mut output = Vec::new();
-
-    let pair = parse_rule(Rule::data_element, input).unwrap();
-    process_data_element(pair, &mut output).unwrap();
-
-    assert_eq!([0x85], &output[..]);
+    let (executable, _) = assemble(input).unwrap();
+    assert_eq!(executable.instructions(), &expected_instr[..]);
 }

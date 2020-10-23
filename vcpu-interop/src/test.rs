@@ -1,14 +1,14 @@
+use crate::executable::*;
 use crate::exit_code::*;
 use crate::memory::*;
 use crate::processor::*;
-use crate::program::*;
 use crate::register::*;
 use crate::result::*;
 use std::ffi::{c_void, CStr, CString};
 use std::os::raw::c_char;
 use std::ptr::{null, null_mut};
 use vcpu::*;
-use vexfile::Program;
+use vex::Executable;
 
 fn get_c_str(value: &str) -> CString {
     CString::new(value).expect("CString::new failed.")
@@ -38,7 +38,7 @@ fn run_simple() {
 
         let iterations = 32i32;
 
-        let program = program_from_words(&[
+        let instructions = instructions_from_words(&[
             instr_i!(SLTI, T2, T0, iterations as i16),
             instr_i!(BEZ, ZERO, T2, jmp_addr_i16(5)),
             instr_i!(SLLI, T1, T0, 2),
@@ -49,8 +49,8 @@ fn run_simple() {
         ]);
 
         assert_eq!(
-            vcpu_processor_run(processor, program.as_ptr(), program.len(), memory),
-            VCPUResult::Ok
+            vcpu_processor_run(processor, instructions.as_ptr(), instructions.len(), memory),
+            VcpuResult::Ok
         );
 
         assert_eq!(vcpu_processor_get_state(processor), ExitCode::Halted as i32);
@@ -58,14 +58,14 @@ fn run_simple() {
         let result = (*memory).try_use(|v| {
             if let MemoryVariant::Plain(vec) = v {
                 for i in 0..iterations {
-                    let value = vec.read_word(i as u32 * constants::WORD_BYTES).unwrap() as i32;
+                    let value = vec.read_word(i as u32 * vcpu::WORD_BYTES).unwrap() as i32;
                     assert_eq!(value, i);
                 }
             }
-            VCPUResult::Ok
+            VcpuResult::Ok
         });
 
-        assert_eq!(VCPUResult::Ok, result);
+        assert_eq!(VcpuResult::Ok, result);
 
         vcpu_processor_destroy(processor);
         vcpu_memory_destroy(memory);
@@ -90,40 +90,40 @@ end:  HALT";
 
         let source = get_c_str(source_str);
 
-        let mut program: *mut Program = null_mut();
+        let mut executable: *mut Executable = null_mut();
 
         assert_eq!(
-            vcpu_program_assemble(source.as_ptr(), 0, &mut program, null_mut(), null_mut()),
-            VCPUResult::Ok
+            vcpu_executable_assemble(source.as_ptr(), 0, &mut executable, null_mut(), null_mut()),
+            VcpuResult::Ok
         );
 
-        assert_ne!(program, null_mut());
+        assert_ne!(executable, null_mut());
 
         let mut instr: *const u8 = null();
         let mut instr_len: usize = 0;
 
-        vcpu_program_get_instructions(program, &mut instr, &mut instr_len);
+        vcpu_executable_get_instructions(executable, &mut instr, &mut instr_len);
 
         assert_ne!(instr, null());
         assert_ne!(instr_len, 0);
 
         assert_eq!(
             vcpu_processor_run(processor, instr, instr_len, memory),
-            VCPUResult::Ok
+            VcpuResult::Ok
         );
 
         let result = (*memory).try_use(|v| {
             if let MemoryVariant::Plain(vec) = v {
                 for i in 0..32 {
-                    let value = vec.read_word(i as u32 * constants::WORD_BYTES).unwrap() as i32;
+                    let value = vec.read_word(i as u32 * vcpu::WORD_BYTES).unwrap() as i32;
                     assert_eq!(value, i);
                 }
             }
-            VCPUResult::Ok
+            VcpuResult::Ok
         });
-        assert_eq!(VCPUResult::Ok, result);
+        assert_eq!(VcpuResult::Ok, result);
 
-        vcpu_program_destroy(program);
+        vcpu_executable_destroy(executable);
         vcpu_processor_destroy(processor);
         vcpu_memory_destroy(memory);
     }
@@ -138,15 +138,15 @@ STUFF
 HALT";
 
         let source = get_c_str(source_str);
-        let mut program: *mut Program = null_mut();
+        let mut executable: *mut Executable = null_mut();
         let mut error: *const c_char = null();
 
         assert_eq!(
-            vcpu_program_assemble(source.as_ptr(), 0, &mut program, null_mut(), &mut error),
-            VCPUResult::AssemblerError
+            vcpu_executable_assemble(source.as_ptr(), 0, &mut executable, null_mut(), &mut error),
+            VcpuResult::AssemblerError
         );
 
-        assert_eq!(program, null_mut());
+        assert_eq!(executable, null_mut());
         assert_ne!(error, null());
     }
 }
@@ -156,15 +156,15 @@ fn get_register_name_valid() {
     unsafe {
         let mut name: *const c_char = null();
 
-        assert_eq!(vcpu_register_get_name(0, &mut name), VCPUResult::Ok);
+        assert_eq!(vcpu_register_get_name(0, &mut name), VcpuResult::Ok);
         assert_ne!(name, null());
         assert_eq!(CStr::from_ptr(name).to_str(), Ok("ZERO"));
 
-        assert_eq!(vcpu_register_get_name(1, &mut name), VCPUResult::Ok);
+        assert_eq!(vcpu_register_get_name(1, &mut name), VcpuResult::Ok);
         assert_ne!(name, null());
         assert_eq!(CStr::from_ptr(name).to_str(), Ok("V0"));
 
-        assert_eq!(vcpu_register_get_name(31, &mut name), VCPUResult::Ok);
+        assert_eq!(vcpu_register_get_name(31, &mut name), VcpuResult::Ok);
         assert_ne!(name, null());
         assert_eq!(CStr::from_ptr(name).to_str(), Ok("RA"));
     }
@@ -177,11 +177,11 @@ fn get_register_name_invalid() {
 
         assert_eq!(
             vcpu_register_get_name(32, &mut name),
-            VCPUResult::OutOfRange
+            VcpuResult::OutOfRange
         );
         assert_eq!(
             vcpu_register_get_name(u32::max_value(), &mut name),
-            VCPUResult::OutOfRange
+            VcpuResult::OutOfRange
         );
     }
 }
@@ -217,21 +217,21 @@ halt";
 
         let source = get_c_str(source_str);
 
-        let mut program: *mut Program = null_mut();
+        let mut executable: *mut Executable = null_mut();
         let mut error: *const c_char = null();
 
         let assemble_result =
-            vcpu_program_assemble(source.as_ptr(), 0, &mut program, null_mut(), &mut error);
-        if let VCPUResult::AssemblerError = assemble_result {
+            vcpu_executable_assemble(source.as_ptr(), 0, &mut executable, null_mut(), &mut error);
+        if let VcpuResult::AssemblerError = assemble_result {
             let error_str = CStr::from_ptr(error).to_str().unwrap();
             panic!(error_str);
         }
-        assert_eq!(assemble_result, VCPUResult::Ok);
+        assert_eq!(assemble_result, VcpuResult::Ok);
 
         let mut instr: *const u8 = null();
         let mut instr_len: usize = 0;
 
-        vcpu_program_get_instructions(program, &mut instr, &mut instr_len);
+        vcpu_executable_get_instructions(executable, &mut instr, &mut instr_len);
 
         let plain_mem = vcpu_memory_create_plain(1024);
         let io_mem = vcpu_memory_create_io(1, can_write_dummy, on_write_dummy, null_mut());
@@ -242,35 +242,35 @@ halt";
 
         assert_eq!(
             vcpu_memory_comp_mount(comp_mem, 0, main_key.as_ptr(), plain_mem),
-            VCPUResult::Ok
+            VcpuResult::Ok
         );
 
         assert_eq!(
             vcpu_memory_comp_mount(comp_mem, 0xF1ED_0000, io_key.as_ptr(), io_mem),
-            VCPUResult::Ok
+            VcpuResult::Ok
         );
 
         let processor = vcpu_processor_create();
 
         assert_eq!(
             vcpu_processor_run(processor, instr, instr_len, comp_mem),
-            VCPUResult::Ok
+            VcpuResult::Ok
         );
 
         let result = (*io_mem).try_use(|v| {
             if let MemoryVariant::IO(io) = v {
                 assert_eq!(io.data(), &[1]);
             }
-            VCPUResult::Ok
+            VcpuResult::Ok
         });
 
-        assert_eq!(VCPUResult::Ok, result);
+        assert_eq!(VcpuResult::Ok, result);
 
         vcpu_processor_destroy(processor);
         vcpu_memory_destroy(comp_mem);
         vcpu_memory_destroy(plain_mem);
         vcpu_memory_destroy(io_mem);
-        vcpu_program_destroy(program);
+        vcpu_executable_destroy(executable);
     }
 }
 
@@ -286,12 +286,12 @@ fn access_comp_mem() {
 
         assert_eq!(
             vcpu_memory_comp_mount(comp_mem, 0, main_key.as_ptr(), plain_mem),
-            VCPUResult::Ok
+            VcpuResult::Ok
         );
 
         assert_eq!(
             vcpu_memory_comp_mount(comp_mem, 0xF1ED_0000, io_key.as_ptr(), io_mem),
-            VCPUResult::Ok
+            VcpuResult::Ok
         );
 
         assert_eq!((*comp_mem).write_byte(0, 1), Ok(()));
@@ -323,15 +323,15 @@ fn get_exit_code_desc() {
     unsafe {
         let mut name: *const c_char = null();
 
-        assert_eq!(vcpu_exit_code_get_description(0, &mut name), VCPUResult::Ok);
+        assert_eq!(vcpu_exit_code_get_description(0, &mut name), VcpuResult::Ok);
         assert_ne!(name, null());
         assert_eq!(CStr::from_ptr(name).to_str(), Ok("Halted"));
 
-        assert_eq!(vcpu_exit_code_get_description(1, &mut name), VCPUResult::Ok);
+        assert_eq!(vcpu_exit_code_get_description(1, &mut name), VcpuResult::Ok);
         assert_ne!(name, null());
         assert_eq!(CStr::from_ptr(name).to_str(), Ok("DivisionByZero"));
 
-        assert_eq!(vcpu_exit_code_get_description(6, &mut name), VCPUResult::Ok);
+        assert_eq!(vcpu_exit_code_get_description(6, &mut name), VcpuResult::Ok);
         assert_ne!(name, null());
         assert_eq!(CStr::from_ptr(name).to_str(), Ok("BadProgramCounter"));
     }

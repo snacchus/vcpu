@@ -18,14 +18,14 @@ enum IOErrorContext {
 
 #[derive(Debug)]
 enum Error {
-    VASM(vasm::Error),
-    IO(std::io::Error, IOErrorContext, PathBuf),
+    Vasm(vasm::Error),
+    Io(std::io::Error, IOErrorContext, PathBuf),
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::IO(err, context, path) => writeln!(
+            Error::Io(err, context, path) => writeln!(
                 f,
                 "{} file \"{}\" failed: {}",
                 match context {
@@ -35,7 +35,7 @@ impl std::fmt::Display for Error {
                 path.display(),
                 err
             ),
-            Error::VASM(err) => {
+            Error::Vasm(err) => {
                 writeln!(f, "Parsing input failed:")?;
                 write!(f, "{}", err)
             }
@@ -84,17 +84,17 @@ fn vasm(input: &str, output: Option<&str>, map: Option<&str>) -> Result<(), Erro
 
     // Read input file
     let input_file = File::open(input_path)
-        .map_err(|err| Error::IO(err, IOErrorContext::ReadInput, input_path.to_owned()))?;
+        .map_err(|err| Error::Io(err, IOErrorContext::ReadInput, input_path.to_owned()))?;
     let mut buf_reader = BufReader::new(input_file);
     let mut input = String::new();
 
     buf_reader
         .read_to_string(&mut input)
-        .map_err(|err| Error::IO(err, IOErrorContext::ReadInput, input_path.to_owned()))?;
+        .map_err(|err| Error::Io(err, IOErrorContext::ReadInput, input_path.to_owned()))?;
 
     // Perform parse
-    let (program, source_map) = vasm::assemble(&input).map_err(|err| {
-        Error::VASM(match input_path.to_str() {
+    let (executable, source_map) = vasm::assemble(&input).map_err(|err| {
+        Error::Vasm(match input_path.to_str() {
             Some(path_str) => err.with_path(path_str),
             None => err,
         })
@@ -105,14 +105,14 @@ fn vasm(input: &str, output: Option<&str>, map: Option<&str>) -> Result<(), Erro
         .unwrap_or_else(|| input_path.with_extension("vex"));
 
     // Write output file
-    vexfile::write_file(&output_path, &program)
-        .map_err(|err| Error::IO(err, IOErrorContext::WriteOutput, output_path))?;
+    vex::write_file(&output_path, &executable)
+        .map_err(|err| Error::Io(err, IOErrorContext::WriteOutput, output_path))?;
 
     // Write source map file (if path is set)
     if let Some(map_path_str) = map {
         let map_path = PathBuf::from(map_path_str);
         write_source_map(&source_map[..], &map_path)
-            .map_err(|err| Error::IO(err, IOErrorContext::WriteOutput, map_path))?;
+            .map_err(|err| Error::Io(err, IOErrorContext::WriteOutput, map_path))?;
     }
     Ok(())
 }

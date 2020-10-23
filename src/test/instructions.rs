@@ -12,7 +12,7 @@ macro_rules! instructions_execute {
     ) => {{
         // ----- PREPARE -----
         // 1. Get instructions
-        let instructions = super::program_from_words(&$instr);
+        let instructions = super::instructions_from_words(&$instr);
 
         // 2. Initialize objects
         let storage = &mut $stor;

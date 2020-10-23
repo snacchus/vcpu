@@ -1,26 +1,26 @@
-use crate::result::VCPUResult;
+use crate::result::VcpuResult;
 use crate::source_map::SourceMap;
 use crate::util::{destroy, into_ptr};
 use std::os::raw::c_char;
 use vasm::assemble_addressed;
-use vexfile::{get_required_size, Program, ReadVexExt, WriteVexExt};
+use vex::{Executable, ReadVexExt, WriteVexExt};
 
 use std::cell::Cell;
 use std::ffi::{CStr, CString};
 use std::slice;
 
 #[no_mangle]
-pub unsafe extern "C" fn vcpu_program_assemble(
+pub unsafe extern "C" fn vcpu_executable_assemble(
     source: *const c_char,
     data_offset: u32,
-    program: *mut *mut Program,
+    executable: *mut *mut Executable,
     source_map: *mut *mut SourceMap,
     error: *mut *const c_char,
-) -> VCPUResult {
+) -> VcpuResult {
     match CStr::from_ptr(source).to_str() {
         Ok(src) => match assemble_addressed(src, data_offset) {
             Ok((result, result_map)) => {
-                *program = into_ptr(result);
+                *executable = into_ptr(result);
                 if !source_map.is_null() {
                     let map_data = result_map
                         .into_iter()
@@ -29,7 +29,7 @@ pub unsafe extern "C" fn vcpu_program_assemble(
                     let map_copy = SourceMap { data: map_data };
                     *source_map = into_ptr(map_copy);
                 }
-                VCPUResult::Ok
+                VcpuResult::Ok
             }
             Err(err) => {
                 if !error.is_null() {
@@ -39,11 +39,11 @@ pub unsafe extern "C" fn vcpu_program_assemble(
                         f.set(err_str);
                     });
                 }
-                VCPUResult::AssemblerError
+                VcpuResult::AssemblerError
             }
         },
 
-        Err(_) => VCPUResult::UTF8Error,
+        Err(_) => VcpuResult::UTF8Error,
     }
 }
 
@@ -52,66 +52,66 @@ thread_local! {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn vcpu_program_load_vex(
+pub unsafe extern "C" fn vcpu_executable_load_vex(
     vex_data: *const u8,
     vex_data_len: usize,
-    program: *mut *mut Program,
-) -> VCPUResult {
+    executable: *mut *mut Executable,
+) -> VcpuResult {
     match slice::from_raw_parts(vex_data, vex_data_len).read_vex() {
         Ok(result) => {
-            *program = into_ptr(result);
-            VCPUResult::Ok
+            *executable = into_ptr(result);
+            VcpuResult::Ok
         }
-        Err(_) => VCPUResult::ProgramLoadFailed,
+        Err(_) => VcpuResult::ExecutableLoadFailed,
     }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn vcpu_program_get_data_offset(program: *const Program) -> u32 {
-    (*program).data_offset()
+pub unsafe extern "C" fn vcpu_executable_get_data_offset(executable: *const Executable) -> u32 {
+    (*executable).data_offset()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn vcpu_program_get_instructions(
-    program: *const Program,
+pub unsafe extern "C" fn vcpu_executable_get_instructions(
+    executable: *const Executable,
     instr: *mut *const u8,
     instr_len: *mut usize,
 ) {
-    let prog_instr = (*program).instructions();
+    let prog_instr = (*executable).instructions();
     *instr = prog_instr.as_ptr();
     *instr_len = prog_instr.len();
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn vcpu_program_get_data(
-    program: *const Program,
+pub unsafe extern "C" fn vcpu_executable_get_data(
+    executable: *const Executable,
     data: *mut *const u8,
     data_len: *mut usize,
 ) {
-    let prog_data = (*program).data();
+    let prog_data = (*executable).data();
     *data = prog_data.as_ptr();
     *data_len = prog_data.len();
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn vcpu_program_destroy(program: *mut Program) {
-    destroy(program);
+pub unsafe extern "C" fn vcpu_executable_destroy(executable: *mut Executable) {
+    destroy(executable);
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn vcpu_program_get_vex_size(program: *const Program) -> usize {
-    get_required_size(&*program)
+pub unsafe extern "C" fn vcpu_executable_get_vex_size(executable: *const Executable) -> usize {
+    (&*executable).required_size()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn vcpu_program_save_vex(
-    program: *const Program,
+pub unsafe extern "C" fn vcpu_executable_save_vex(
+    executable: *const Executable,
     vex_data: *mut u8,
     vex_data_len: usize,
-) -> VCPUResult {
+) -> VcpuResult {
     let mut output = slice::from_raw_parts_mut(vex_data, vex_data_len);
-    match output.write_vex(&*program) {
-        Ok(_) => VCPUResult::Ok,
-        Err(_) => VCPUResult::ProgramSaveFailed,
+    match output.write_vex(&*executable) {
+        Ok(_) => VcpuResult::Ok,
+        Err(_) => VcpuResult::ExecutableSaveFailed,
     }
 }

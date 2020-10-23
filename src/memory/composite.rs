@@ -1,4 +1,4 @@
-use super::{Storage, StorageMut};
+use crate::{Storage, StorageMut};
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 
@@ -59,8 +59,7 @@ impl CompositeMemory {
     /// # Examples
     /// Successful mount:
     /// ```
-    /// use vcpu::Storage;
-    /// use vcpu::memory::composite::CompositeMemory;
+    /// use vcpu::{CompositeMemory, Storage};
     ///
     /// let mut memory = CompositeMemory::new();
     /// assert_eq!(
@@ -73,8 +72,7 @@ impl CompositeMemory {
     ///
     /// Consecutive fragments:
     /// ```
-    /// use vcpu::Storage;
-    /// use vcpu::memory::composite::{CompositeMemory, MountError};
+    /// use vcpu::{CompositeMemory, MountError, Storage};
     ///
     /// let mut memory = CompositeMemory::new();
     /// assert_eq!(
@@ -89,8 +87,7 @@ impl CompositeMemory {
     ///
     /// Intersecting fragments:
     /// ```
-    /// use vcpu::Storage;
-    /// use vcpu::memory::composite::{CompositeMemory, MountError};
+    /// use vcpu::{CompositeMemory, MountError, Storage};
     ///
     /// let mut memory = CompositeMemory::new();
     /// assert_eq!(
@@ -128,8 +125,7 @@ impl CompositeMemory {
     ///
     /// # Examples
     /// ```
-    /// use vcpu::Storage;
-    /// use vcpu::memory::composite::{CompositeMemory, MountError};
+    /// use vcpu::{CompositeMemory, MountError, Storage};
     ///
     /// let mut memory = CompositeMemory::new();
     /// assert_eq!(

@@ -14,4 +14,4 @@ pest = "2.1"
 pest_derive = "2.1"
 vcpu = { path = ".." }
 util = { path = "../util" }
-vexfile = { path = "../vexfile" }
+vex = { path = "../vex" }

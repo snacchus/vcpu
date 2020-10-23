@@ -1,9 +1,9 @@
 use num::FromPrimitive;
 use std::num::Wrapping;
 
-use crate::memory::StorageMut;
 use crate::{
-    constants, register_index, ALUFunct, ExitCode, FLOPFunct, OpCode, Register, RegisterId, Word,
+    constants, register_index, AluFunct, ExitCode, FlopFunct, Opcode, Register, RegisterId,
+    StorageMut, Word,
 };
 
 pub enum TickResult {
@@ -125,93 +125,93 @@ pub fn tick(
         let address = Wrapping(address as u32);
 
         match op_code {
-            OpCode::NOP => {}
+            Opcode::NOP => {}
 
-            OpCode::ALU => {
+            Opcode::ALU => {
                 let funct_value = (instruction & constants::FUNCT_MASK) >> constants::FUNCT_OFFSET;
-                let funct = ALUFunct::from_u32(funct_value);
+                let funct = AluFunct::from_u32(funct_value);
 
                 if let Some(funct) = funct {
                     match funct {
-                        ALUFunct::ADD => {
+                        AluFunct::ADD => {
                             write_i(registers, rdid, rs1i + rs2i);
                         }
 
-                        ALUFunct::SUB => {
+                        AluFunct::SUB => {
                             write_i(registers, rdid, rs1i - rs2i);
                         }
 
-                        ALUFunct::MUL => {
+                        AluFunct::MUL => {
                             mul(registers, rdid, rs1i, rs2i);
                         }
 
-                        ALUFunct::DIV => {
+                        AluFunct::DIV => {
                             if !div(registers, rdid, rs1i, rs2i) {
                                 return TickResult::Stop(ExitCode::DivisionByZero);
                             }
                         }
 
-                        ALUFunct::AND => {
+                        AluFunct::AND => {
                             write_i(registers, rdid, rs1i & rs2i);
                         }
 
-                        ALUFunct::OR => {
+                        AluFunct::OR => {
                             write_i(registers, rdid, rs1i | rs2i);
                         }
 
-                        ALUFunct::XOR => {
+                        AluFunct::XOR => {
                             write_i(registers, rdid, rs1i ^ rs2i);
                         }
 
-                        ALUFunct::SLL => {
+                        AluFunct::SLL => {
                             write_i(registers, rdid, rs1i << rs2u.0 as usize);
                         }
 
-                        ALUFunct::SRL => {
+                        AluFunct::SRL => {
                             write_u(registers, rdid, rs1u >> rs2u.0 as usize);
                         }
 
-                        ALUFunct::SRA => {
+                        AluFunct::SRA => {
                             write_i(registers, rdid, rs1i >> rs2u.0 as usize);
                         }
 
-                        ALUFunct::SEQ => {
+                        AluFunct::SEQ => {
                             set_if(registers, rdid, rs1i == rs2i);
                         }
 
-                        ALUFunct::SNE => {
+                        AluFunct::SNE => {
                             set_if(registers, rdid, rs1i != rs2i);
                         }
 
-                        ALUFunct::SLT => {
+                        AluFunct::SLT => {
                             set_if(registers, rdid, rs1i < rs2i);
                         }
 
-                        ALUFunct::SGT => {
+                        AluFunct::SGT => {
                             set_if(registers, rdid, rs1i > rs2i);
                         }
 
-                        ALUFunct::SLE => {
+                        AluFunct::SLE => {
                             set_if(registers, rdid, rs1i <= rs2i);
                         }
 
-                        ALUFunct::SGE => {
+                        AluFunct::SGE => {
                             set_if(registers, rdid, rs1i >= rs2i);
                         }
 
-                        ALUFunct::SLTU => {
+                        AluFunct::SLTU => {
                             set_if(registers, rdid, rs1u < rs2u);
                         }
 
-                        ALUFunct::SGTU => {
+                        AluFunct::SGTU => {
                             set_if(registers, rdid, rs1u > rs2u);
                         }
 
-                        ALUFunct::SLEU => {
+                        AluFunct::SLEU => {
                             set_if(registers, rdid, rs1u <= rs2u);
                         }
 
-                        ALUFunct::SGEU => {
+                        AluFunct::SGEU => {
                             set_if(registers, rdid, rs1u >= rs2u);
                         }
                     }
@@ -220,37 +220,37 @@ pub fn tick(
                 }
             }
 
-            OpCode::HALT => {
+            Opcode::HALT => {
                 return TickResult::Stop(ExitCode::Halted);
             }
 
-            OpCode::CALL => {
+            Opcode::CALL => {
                 // TODO: define an interface for arbitrary syscalls (or figure out if they are necessary at all)
             }
 
-            OpCode::COPY => {
+            Opcode::COPY => {
                 write_i(registers, rdid, rs1i);
             }
 
-            OpCode::LI => {
+            Opcode::LI => {
                 write_i(registers, rdid, imm_i);
             }
 
-            OpCode::LHI => {
+            Opcode::LHI => {
                 write_i(registers, rdid, imm_i << 16);
             }
 
-            OpCode::SLO => {
+            Opcode::SLO => {
                 let high = Wrapping(rd.u() & !constants::LOW_BITS_MASK);
                 write_u(registers, rdid, imm_u | high);
             }
 
-            OpCode::SHI => {
+            Opcode::SHI => {
                 let low = Wrapping(rd.u() & !constants::HIGH_BITS_MASK);
                 write_u(registers, rdid, (imm_u << 16) | low);
             }
 
-            OpCode::LB => {
+            Opcode::LB => {
                 if !load(
                     registers,
                     storage,
@@ -262,7 +262,7 @@ pub fn tick(
                 }
             }
 
-            OpCode::LH => {
+            Opcode::LH => {
                 if !load(
                     registers,
                     storage,
@@ -274,7 +274,7 @@ pub fn tick(
                 }
             }
 
-            OpCode::LW => {
+            Opcode::LW => {
                 if !load(
                     registers,
                     storage,
@@ -286,7 +286,7 @@ pub fn tick(
                 }
             }
 
-            OpCode::SB => {
+            Opcode::SB => {
                 if storage
                     .write_byte((rs1u + imm_u_ex).0, rd.u() as u8)
                     .is_err()
@@ -295,7 +295,7 @@ pub fn tick(
                 }
             }
 
-            OpCode::SH => {
+            Opcode::SH => {
                 if storage
                     .write_half((rs1u + imm_u_ex).0, rd.u() as u16)
                     .is_err()
@@ -304,7 +304,7 @@ pub fn tick(
                 }
             }
 
-            OpCode::SW => {
+            Opcode::SW => {
                 if storage
                     .write_word((rs1u + imm_u_ex).0, rd.u() as u32)
                     .is_err()
@@ -313,144 +313,149 @@ pub fn tick(
                 }
             }
 
-            OpCode::ADDI => {
+            Opcode::ADDI => {
                 write_i(registers, rdid, rs1i + imm_i);
             }
 
-            OpCode::SUBI => {
+            Opcode::SUBI => {
                 write_i(registers, rdid, rs1i - imm_i);
             }
 
-            OpCode::MULI => {
+            Opcode::MULI => {
                 mul(registers, rdid, rs1i, imm_i);
             }
 
-            OpCode::DIVI => {
+            Opcode::DIVI => {
                 if !div(registers, rdid, rs1i, imm_i) {
                     return TickResult::Stop(ExitCode::DivisionByZero);
                 }
             }
 
-            OpCode::ANDI => {
+            Opcode::ANDI => {
                 write_i(registers, rdid, rs1i & imm_i);
             }
 
-            OpCode::ORI => {
+            Opcode::ORI => {
                 write_i(registers, rdid, rs1i | imm_i);
             }
 
-            OpCode::XORI => {
+            Opcode::XORI => {
                 write_i(registers, rdid, rs1i ^ imm_i);
             }
 
-            OpCode::FLIP => {
+            Opcode::FLIP => {
                 write_i(registers, rdid, !rs1i);
             }
 
-            OpCode::SLLI => {
+            Opcode::SLLI => {
                 write_i(registers, rdid, rs1i << imm_u_ex.0 as usize);
             }
 
-            OpCode::SRLI => {
+            Opcode::SRLI => {
                 write_u(registers, rdid, rs1u >> imm_u_ex.0 as usize);
             }
 
-            OpCode::SRAI => {
+            Opcode::SRAI => {
                 write_i(registers, rdid, rs1i >> imm_u_ex.0 as usize);
             }
 
-            OpCode::SEQI => {
+            Opcode::SEQI => {
                 set_if(registers, rdid, rs1i == imm_i);
             }
 
-            OpCode::SNEI => {
+            Opcode::SNEI => {
                 set_if(registers, rdid, rs1i != imm_i);
             }
 
-            OpCode::SLTI => {
+            Opcode::SLTI => {
                 set_if(registers, rdid, rs1i < imm_i);
             }
 
-            OpCode::SGTI => {
+            Opcode::SGTI => {
                 set_if(registers, rdid, rs1i > imm_i);
             }
 
-            OpCode::SLEI => {
+            Opcode::SLEI => {
                 set_if(registers, rdid, rs1i <= imm_i);
             }
 
-            OpCode::SGEI => {
+            Opcode::SGEI => {
                 set_if(registers, rdid, rs1i >= imm_i);
             }
 
-            OpCode::SLTUI => {
+            Opcode::SLTUI => {
                 set_if(registers, rdid, rs1u < imm_u);
             }
 
-            OpCode::SGTUI => {
+            Opcode::SGTUI => {
                 set_if(registers, rdid, rs1u > imm_u);
             }
 
-            OpCode::SLEUI => {
+            Opcode::SLEUI => {
                 set_if(registers, rdid, rs1u <= imm_u);
             }
 
-            OpCode::SGEUI => {
+            Opcode::SGEUI => {
                 set_if(registers, rdid, rs1u >= imm_u);
             }
 
-            OpCode::BEZ => {
+            Opcode::BEZ => {
                 if rs1i.0 == 0 {
                     return jump(program_counter + imm_u_ex, false);
                 }
             }
 
-            OpCode::BNZ => {
+            Opcode::BNZ => {
                 if rs1i.0 != 0 {
                     return jump(program_counter + imm_u_ex, false);
                 }
             }
 
-            OpCode::JMP => {
+            Opcode::JMP => {
                 return jump(program_counter + address, false);
             }
 
-            OpCode::JL => {
+            Opcode::JL => {
                 return jump(program_counter + address, true);
             }
 
-            OpCode::JR => {
+            Opcode::JR => {
                 return jump(rs1u, false);
             }
 
-            OpCode::JLR => {
+            Opcode::JLR => {
                 return jump(rs1u, true);
             }
 
-            OpCode::ITOF => write_f(registers, rdid, rs1i.0 as f32),
+            Opcode::ITOF => write_f(registers, rdid, rs1i.0 as f32),
 
-            OpCode::FTOI => {
-                write_i(registers, rdid, Wrapping(rs1f as i32));
+            Opcode::FTOI => {
+                let i = if rs1f.is_finite() {
+                    rs1f as i32
+                } else {
+                    i32::MIN
+                };
+                write_i(registers, rdid, Wrapping(i));
             }
 
-            OpCode::FLOP => {
+            Opcode::FLOP => {
                 let funct_value = (instruction & constants::FUNCT_MASK) >> constants::FUNCT_OFFSET;
-                let funct = FLOPFunct::from_u32(funct_value);
+                let funct = FlopFunct::from_u32(funct_value);
                 if let Some(funct) = funct {
                     match funct {
-                        FLOPFunct::FADD => {
+                        FlopFunct::FADD => {
                             write_f(registers, rdid, rs1f + rs2f);
                         }
 
-                        FLOPFunct::FSUB => {
+                        FlopFunct::FSUB => {
                             write_f(registers, rdid, rs1f - rs2f);
                         }
 
-                        FLOPFunct::FMUL => {
+                        FlopFunct::FMUL => {
                             write_f(registers, rdid, rs1f * rs2f);
                         }
 
-                        FLOPFunct::FDIV => {
+                        FlopFunct::FDIV => {
                             write_f(registers, rdid, rs1f / rs2f);
                         }
                     }

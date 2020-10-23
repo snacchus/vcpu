@@ -1,6 +1,6 @@
 mod logic;
 
-use crate::memory::StorageMut;
+use crate::StorageMut;
 use crate::{constants, register_index, Address, Endian, Immediate, Register, RegisterId, Word};
 use logic::TickResult;
 use util::InteropGetName;
@@ -17,7 +17,7 @@ pub const fn jmp_addr_i32(offset: i32) -> Address {
     offset * (constants::WORD_BYTES as i32)
 }
 
-pub fn program_from_words(vec: &[Word]) -> Vec<u8> {
+pub fn instructions_from_words(vec: &[Word]) -> Vec<u8> {
     let mut byte_vec = vec![0; vec.len() * constants::WORD_BYTES as usize];
     Endian::write_u32_into(&vec[..], &mut byte_vec[..]);
     byte_vec
@@ -34,19 +34,19 @@ fn get_next_pc(pc: u32, instr_len: u32) -> u32 {
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, FromPrimitive, ToPrimitive, InteropGetName)]
 pub enum ExitCode {
-    /// HALT instruction was executed (Normal shutdown)
+    /// HALT instruction was executed (Normal shutdown).
     Halted,
-    /// Attempted integer division by zero      
+    /// Attempted integer division by zero.
     DivisionByZero,
-    /// Attempted to access main memory at invalid address  
+    /// Attempted to access main memory at invalid address.
     BadMemoryAccess,
-    /// Jump address was not aligned to word boundaries
+    /// Jump address was not aligned to word boundaries.
     BadAlignment,
-    /// Jump address was out of instruction memory range  
+    /// Jump address was out of instruction memory range.
     BadJump,
-    /// Opcode or funct was not recognized
+    /// Opcode or funct was not recognized.
     InvalidOpcode,
-    /// Program counter is out of instruction memory range
+    /// Program counter is out of instruction memory range.
     BadProgramCounter,
 }
 

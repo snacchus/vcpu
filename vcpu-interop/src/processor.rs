@@ -1,5 +1,5 @@
 use crate::memory::{Memory, MemoryVariant};
-use crate::result::VCPUResult;
+use crate::result::VcpuResult;
 use crate::util::{destroy, into_ptr};
 use num_traits::{FromPrimitive, ToPrimitive};
 use std::slice;
@@ -15,13 +15,13 @@ pub unsafe extern "C" fn vcpu_processor_get_register(
     processor: *const Processor,
     index: u32,
     value: *mut i32,
-) -> VCPUResult {
+) -> VcpuResult {
     match FromPrimitive::from_u32(index) {
         Some(rid) => {
             *value = (*processor).register(rid).i();
-            VCPUResult::Ok
+            VcpuResult::Ok
         }
-        None => VCPUResult::OutOfRange,
+        None => VcpuResult::OutOfRange,
     }
 }
 
@@ -30,13 +30,13 @@ pub unsafe extern "C" fn vcpu_processor_set_register(
     processor: *mut Processor,
     index: u32,
     value: i32,
-) -> VCPUResult {
+) -> VcpuResult {
     match FromPrimitive::from_u32(index) {
         Some(rid) => {
             (*processor).register_mut(rid).set_i(value);
-            VCPUResult::Ok
+            VcpuResult::Ok
         }
-        None => VCPUResult::OutOfRange,
+        None => VcpuResult::OutOfRange,
     }
 }
 
@@ -64,7 +64,7 @@ pub unsafe extern "C" fn vcpu_processor_tick(
     instr: *const u8,
     instr_len: usize,
     memory: *mut Memory,
-) -> VCPUResult {
+) -> VcpuResult {
     (*memory).try_use_mut(|variant| {
         (*processor).tick(
             slice::from_raw_parts(instr, instr_len),
@@ -74,7 +74,7 @@ pub unsafe extern "C" fn vcpu_processor_tick(
                 MemoryVariant::Composite(inner) => inner,
             },
         );
-        VCPUResult::Ok
+        VcpuResult::Ok
     })
 }
 
@@ -84,7 +84,7 @@ pub unsafe extern "C" fn vcpu_processor_run(
     instr: *const u8,
     instr_len: usize,
     memory: *mut Memory,
-) -> VCPUResult {
+) -> VcpuResult {
     (*memory).try_use_mut(|variant| {
         (*processor).run(
             slice::from_raw_parts(instr, instr_len),
@@ -94,7 +94,7 @@ pub unsafe extern "C" fn vcpu_processor_run(
                 MemoryVariant::Composite(inner) => inner,
             },
         );
-        VCPUResult::Ok
+        VcpuResult::Ok
     })
 }
 

@@ -31,3 +31,8 @@ impl Error for ParseEnumError {
 pub trait EnumFromStr: Sized {
     fn from_str(s: &str) -> Result<Self, ParseEnumError>;
 }
+
+pub trait EnumGetVariantCount {
+    // TODO: make this a const fn as soon as it becomes stable
+    fn variant_count() -> usize;
+}

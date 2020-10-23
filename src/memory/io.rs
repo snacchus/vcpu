@@ -1,7 +1,4 @@
-use crate::memory::{Storage, StorageMut};
-
-// TODO: think about replacing this with fully custom storage
-//       that can be implemented externally
+use crate::{Storage, StorageMut};
 
 pub trait IOHandler {
     fn can_write(&self, memory: &[u8], address: u32, size: u32) -> bool;
@@ -98,7 +95,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::{DelegateIOHandler, IOMemory};
-    use crate::memory::Storage;
     use crate::*;
     use std::cell::Cell;
     use std::rc::Rc;
@@ -116,7 +112,7 @@ mod tests {
             },
         );
 
-        let program = program_from_words(&[
+        let instructions = instructions_from_words(&[
             instr_i!(LI, T0, ZERO, 923),
             instr_i!(SW, T0, ZERO, 4),
             instr_i!(HALT, ZERO, ZERO, 0),
@@ -125,7 +121,7 @@ mod tests {
         let mut processor = Processor::default();
         let mut memory = IOMemory::new(16, handler);
 
-        assert_eq!(processor.run(&program, &mut memory), ExitCode::Halted);
+        assert_eq!(processor.run(&instructions, &mut memory), ExitCode::Halted);
 
         let (address, value) = result.get();
 

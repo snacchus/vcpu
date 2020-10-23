@@ -62,44 +62,32 @@ labeled_data_element = !{ label? ~ data_element }
 
 data = ${ ".data" ~ token_sep ~ labeled_data_element? ~ (token_sep ~ labeled_data_element)* }
 
-// macros
-
-macro_push = { ^"PUSH" ~ register }
-macro_pop = { ^"POP" ~ register }
-macro_lwi = { ^"LWI" ~ register ~ "," ~ int }
-macro_lda = { ^"LDA" ~ register ~ "," ~ identifier }
-macro_lia = { ^"LIA" ~ register ~ "," ~ identifier }
-
 // instruction rules
 
 jump_target = { int | identifier }
 
 register = ${ "$" ~ register_id }
 
-opcode_alu_sep = ${ opcode_alu ~ token_sep }
-opcode_flop_sep = ${ opcode_flop ~ token_sep }
-opcode_i_sep = ${ opcode_i ~ token_sep }
-opcode_iu_sep = ${ opcode_iu ~ token_sep }
-opcode_ds_sep = ${ opcode_ds ~ token_sep }
-opcode_li_sep = ${ opcode_li ~ token_sep }
-opcode_si_sep = ${ opcode_si ~ token_sep }
-opcode_br_sep = ${ opcode_br ~ token_sep }
-opcode_jr_sep = ${ opcode_jr ~ token_sep }
-opcode_ls_sep = ${ opcode_ls ~ token_sep }
-opcode_j_sep = ${ opcode_j ~ token_sep }
+instruction_alu = { mnemonic_alu ~ register ~ "," ~ register ~ "," ~ register }
+instruction_flop = { mnemonic_flop ~ register ~ "," ~ register ~ "," ~ register }
+instruction_i = { mnemonic_i ~ register ~ "," ~ register ~ "," ~ int }
+instruction_iu = { mnemonic_iu ~ register ~ "," ~ register ~ "," ~ uint }
+instruction_ds = { mnemonic_ds ~ register ~ "," ~ register }
+instruction_li = { mnemonic_li ~ register ~ "," ~ int }
+instruction_si = { mnemonic_si ~ register ~ "," ~ uint }
+instruction_e = { mnemonic_e }
+instruction_br = { mnemonic_br ~ register ~ "," ~ jump_target }
+instruction_jr = { mnemonic_jr ~ register }
+instruction_ls = { mnemonic_ls ~ register ~ "," ~ int ~ "(" ~ register ~ ")" }
+instruction_j = { mnemonic_j ~ jump_target }
 
-instruction_alu = { opcode_alu_sep ~ register ~ "," ~ register ~ "," ~ register }
-instruction_flop = { opcode_flop_sep ~ register ~ "," ~ register ~ "," ~ register }
-instruction_i = { opcode_i_sep ~ register ~ "," ~ register ~ "," ~ int }
-instruction_iu = { opcode_iu_sep ~ register ~ "," ~ register ~ "," ~ uint }
-instruction_ds = { opcode_ds_sep ~ register ~ "," ~ register }
-instruction_li = { opcode_li_sep ~ register ~ "," ~ int }
-instruction_si = { opcode_si_sep ~ register ~ "," ~ uint }
-instruction_e = { opcode_e }
-instruction_br = { opcode_br_sep ~ register ~ "," ~ jump_target }
-instruction_jr = { opcode_jr_sep ~ register }
-instruction_ls = { opcode_ls_sep ~ register ~ "," ~ int ~ "(" ~ register ~ ")" }
-instruction_j = { opcode_j_sep ~ jump_target }
+// shorthand instructions
+
+instruction_push = { ^"PUSH" ~ register }
+instruction_pop = { ^"POP" ~ register }
+instruction_lwi = { ^"LWI" ~ register ~ "," ~ int }
+instruction_lda = { ^"LDA" ~ register ~ "," ~ identifier }
+instruction_lia = { ^"LIA" ~ register ~ "," ~ identifier }
 
 instruction = {
     instruction_alu  |
@@ -114,11 +102,11 @@ instruction = {
     instruction_jr   | 
     instruction_ls   |
     instruction_j    |
-    macro_push       |
-    macro_pop        |
-    macro_lwi        |
-    macro_lda        |
-    macro_lia
+    instruction_push |
+    instruction_pop  |
+    instruction_lwi  |
+    instruction_lda  |
+    instruction_lia
 }
 
 labeled_instruction = !{ label? ~ instruction }
@@ -162,7 +150,7 @@ register_id = {
     ^"RA"  
 }
 
-opcode_alu = {
+mnemonic_alu = {
     ^"ADD"  |
     ^"SUB"  |
     ^"MUL"  |
@@ -185,14 +173,14 @@ opcode_alu = {
     ^"SGEU"
 }
 
-opcode_flop = {
+mnemonic_flop = {
     ^"FADD" |
     ^"FSUB" |
     ^"FMUL" |
     ^"FDIV" 
 }
 
-opcode_i = {
+mnemonic_i = {
     ^"ADDI"  |
     ^"SUBI"  |
     ^"MULI"  |
@@ -211,46 +199,46 @@ opcode_i = {
     ^"SGEI"
 }
 
-opcode_iu = {
+mnemonic_iu = {
     ^"SLTUI" |
     ^"SGTUI" |
     ^"SLEUI" |
     ^"SGEUI"
 }
 
-opcode_ds = {
+mnemonic_ds = {
     ^"COPY" |
     ^"FLIP" |
     ^"ITOF" |
     ^"FTOI"
 }
 
-opcode_li = {
+mnemonic_li = {
     ^"LI" |
     ^"LHI"
 }
 
-opcode_si = {
+mnemonic_si = {
     ^"SLO" |
     ^"SHI"
 }
 
-opcode_e = {
+mnemonic_e = {
     ^"NOP" |
     ^"HALT"
 }
 
-opcode_br = {
+mnemonic_br = {
     ^"BEZ" |
     ^"BNZ"
 }
 
-opcode_jr = {
+mnemonic_jr = {
     ^"JR" |
     ^"JLR"
 }
 
-opcode_ls = {
+mnemonic_ls = {
     ^"LB" |
     ^"LH" |
     ^"LW" |
@@ -259,7 +247,7 @@ opcode_ls = {
     ^"SW"
 }
 
-opcode_j = {
+mnemonic_j = {
     ^"JMP" |
     ^"JL"
 }

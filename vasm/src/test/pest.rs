@@ -239,7 +239,7 @@ fn instruction_alu() {
         input: "XOR $s0,   $V1,$Rm",
         rule: Rule::instruction_alu,
         tokens: [ instruction_alu(0, 18, [
-            opcode_alu_sep(0, 4, [ opcode_alu(0, 3) ]),
+            mnemonic_alu(0, 3),
             register(4, 7, [ register_id(5, 7) ]),
             register(11, 14, [ register_id(12, 14) ]),
             register(15, 18, [ register_id(16, 18) ])
@@ -254,7 +254,7 @@ fn instruction_flop() {
         input: "FDIV $s0,$V1, $a4",
         rule: Rule::instruction_flop,
         tokens: [ instruction_flop(0, 17, [
-            opcode_flop_sep(0, 5, [ opcode_flop(0, 4) ]),
+            mnemonic_flop(0, 4),
             register(5, 8, [ register_id(6, 8) ]),
             register(9, 12, [ register_id(10, 12) ]),
             register(14, 17, [ register_id(15, 17) ])
@@ -269,7 +269,7 @@ fn instruction_i() {
         input: "SLTI  $zErO,$RA ,-443",
         rule: Rule::instruction_i,
         tokens: [ instruction_i(0, 21, [
-            opcode_i_sep(0, 6, [ opcode_i(0, 4) ]),
+            mnemonic_i(0, 4),
             register(6, 11, [ register_id(7, 11) ]),
             register(12, 15, [ register_id(13, 15) ]),
             int(17, 21, [ dec_int(17, 21) ])
@@ -284,7 +284,7 @@ fn instruction_iu() {
         input: "SLTUI  $t4,  $V1,3997",
         rule: Rule::instruction_iu,
         tokens: [ instruction_iu(0, 21, [
-            opcode_iu_sep(0, 7, [ opcode_iu(0, 5) ]),
+            mnemonic_iu(0, 5),
             register(7, 10, [ register_id(8, 10) ]),
             register(13, 16, [ register_id(14, 16) ]),
             uint(17, 21, [ dec_uint(17, 21) ])
@@ -299,7 +299,7 @@ fn instruction_ds() {
         input: "fLIp $ZERO , $rM",
         rule: Rule::instruction_ds,
         tokens: [ instruction_ds(0, 16, [
-            opcode_ds_sep(0, 5, [ opcode_ds(0, 4) ]),
+            mnemonic_ds(0, 4),
             register(5, 10, [ register_id(6, 10) ]),
             register(13, 16, [ register_id(14, 16) ])
         ]) ]
@@ -313,7 +313,7 @@ fn instruction_li() {
         input: "LHI $T5 ,0o442",
         rule: Rule::instruction_li,
         tokens: [ instruction_li(0, 14, [
-            opcode_li_sep(0, 4, [ opcode_li(0, 3) ]),
+            mnemonic_li(0, 3),
             register(4, 7, [ register_id(5, 7) ]),
             int(9, 14, [ oct_uint(9, 14, [ oct_lit(11, 14) ]) ])
         ]) ]
@@ -327,7 +327,7 @@ fn instruction_si() {
         input: "SHI $T5, 0x2345",
         rule: Rule::instruction_si,
         tokens: [ instruction_si(0, 15, [
-            opcode_si_sep(0, 4, [ opcode_si(0, 3) ]),
+            mnemonic_si(0, 3),
             register(4, 7, [ register_id(5, 7) ]),
             uint(9, 15, [ hex_uint(9, 15, [ hex_lit(11, 15) ]) ])
         ]) ]
@@ -340,7 +340,7 @@ fn instruction_e() {
         parser: VASMParser,
         input: "HaLT",
         rule: Rule::instruction_e,
-        tokens: [ instruction_e(0, 4, [ opcode_e(0, 4) ]) ]
+        tokens: [ instruction_e(0, 4, [ mnemonic_e(0, 4) ]) ]
     };
 }
 
@@ -351,7 +351,7 @@ fn instruction_br() {
         input: "BEZ $t6, 0xd1",
         rule: Rule::instruction_br,
         tokens: [ instruction_br(0, 13, [
-            opcode_br_sep(0, 4, [ opcode_br(0, 3) ]),
+            mnemonic_br(0, 3),
             register(4, 7, [ register_id(5, 7) ]),
             jump_target(9, 13, [ int(9, 13, [ hex_uint(9, 13, [ hex_lit(11, 13) ]) ]) ])
         ]) ]
@@ -361,7 +361,7 @@ fn instruction_br() {
         input: "BnZ  $RM ,_55_arFd",
         rule: Rule::instruction_br,
         tokens: [ instruction_br(0, 18, [
-            opcode_br_sep(0, 5, [ opcode_br(0, 3) ]),
+            mnemonic_br(0, 3),
             register(5, 8, [ register_id(6, 8) ]),
             jump_target(10, 18, [ identifier(10, 18) ])
         ]) ]
@@ -375,7 +375,7 @@ fn instruction_jr() {
         input: "JLR   $zero",
         rule: Rule::instruction_jr,
         tokens: [ instruction_jr(0, 11, [
-            opcode_jr_sep(0, 6, [ opcode_jr(0, 3) ]),
+            mnemonic_jr(0, 3),
             register(6, 11, [ register_id(7, 11) ])
         ]) ]
     };
@@ -388,7 +388,7 @@ fn instruction_ls() {
         input: "sw $V1, -92 ($s5 )",
         rule: Rule::instruction_ls,
         tokens: [ instruction_ls(0, 18, [
-            opcode_ls_sep(0, 3, [ opcode_ls(0, 2) ]),
+            mnemonic_ls(0, 2),
             register(3, 6, [ register_id(4, 6) ]),
             int(8, 11, [ dec_int(8, 11) ]),
             register(13, 16, [ register_id(14, 16) ])
@@ -403,7 +403,7 @@ fn instruction_j() {
         input: "JMP 0b110110",
         rule: Rule::instruction_j,
         tokens: [ instruction_j(0, 12, [
-            opcode_j_sep(0, 4, [ opcode_j(0, 3) ]),
+            mnemonic_j(0, 3),
             jump_target(4, 12, [ int(4, 12, [ bin_uint(4, 12, [ bin_lit(6, 12) ]) ]) ])
         ]) ]
     };
@@ -412,43 +412,43 @@ fn instruction_j() {
         input: "jl oGfe_A34_",
         rule: Rule::instruction_j,
         tokens: [ instruction_j(0, 12, [
-            opcode_j_sep(0, 3, [ opcode_j(0, 2) ]),
+            mnemonic_j(0, 2),
             jump_target(3, 12, [ identifier(3, 12) ])
         ]) ]
     };
 }
 
 #[test]
-fn macro_push() {
+fn instruction_push() {
     parses_to! {
         parser: VASMParser,
         input: "PUSH  $RA ",
-        rule: Rule::macro_push,
-        tokens: [ macro_push(0, 9, [
+        rule: Rule::instruction_push,
+        tokens: [ instruction_push(0, 9, [
             register(6, 9, [ register_id(7, 9) ])
         ])]
     }
 }
 
 #[test]
-fn macro_pop() {
+fn instruction_pop() {
     parses_to! {
         parser: VASMParser,
         input: "POP $V0",
-        rule: Rule::macro_pop,
-        tokens: [ macro_pop(0, 7, [
+        rule: Rule::instruction_pop,
+        tokens: [ instruction_pop(0, 7, [
             register(4, 7, [ register_id(5, 7) ])
         ])]
     }
 }
 
 #[test]
-fn macro_lwi() {
+fn instruction_lwi() {
     parses_to! {
         parser: VASMParser,
         input: "lwi $T5,  0xF123f234",
-        rule: Rule::macro_lwi,
-        tokens: [ macro_lwi(0, 20, [
+        rule: Rule::instruction_lwi,
+        tokens: [ instruction_lwi(0, 20, [
             register(4, 7, [ register_id(5, 7) ]),
             int(10, 20, [ hex_uint(10, 20, [ hex_lit(12, 20) ]) ])
         ]) ]
@@ -456,12 +456,12 @@ fn macro_lwi() {
 }
 
 #[test]
-fn macro_lda() {
+fn instruction_lda() {
     parses_to! {
         parser: VASMParser,
         input: "lda $s4, f_44ash__0",
-        rule: Rule::macro_lda,
-        tokens: [ macro_lda(0, 19, [
+        rule: Rule::instruction_lda,
+        tokens: [ instruction_lda(0, 19, [
             register(4, 7, [ register_id(5, 7) ]),
             identifier(9, 19)
         ]) ]
@@ -469,27 +469,15 @@ fn macro_lda() {
 }
 
 #[test]
-fn macro_lia() {
+fn instruction_lia() {
     parses_to! {
         parser: VASMParser,
         input: "lia $s4, f_44ash__0",
-        rule: Rule::macro_lia,
-        tokens: [ macro_lia(0, 19, [
+        rule: Rule::instruction_lia,
+        tokens: [ instruction_lia(0, 19, [
             register(4, 7, [ register_id(5, 7) ]),
             identifier(9, 19)
         ]) ]
-    };
-}
-
-#[test]
-fn instruction() {
-    fails_with! {
-        parser: VASMParser,
-        input: "DIV$t3,$ZERO,$a0",
-        rule: Rule::instruction,
-        positives: vec![Rule::instruction],
-        negatives: vec![],
-        pos: 0
     };
 }
 
@@ -502,7 +490,7 @@ fn labeled_instruction() {
         tokens: [ labeled_instruction(0, 28, [
             label(0, 9, [ identifier(0, 8) ]),
             instruction(22, 28, [ instruction_jr(22, 28, [
-                opcode_jr_sep(22, 25, [ opcode_jr(22, 24) ]),
+                mnemonic_jr(22, 24),
                 register(25, 28, [ register_id(26, 28) ])
             ]) ])
         ]) ]
@@ -512,7 +500,7 @@ fn labeled_instruction() {
         input: "HALT",
         rule: Rule::labeled_instruction,
         tokens: [ labeled_instruction(0, 4, [
-            instruction(0, 4, [ instruction_e(0, 4, [ opcode_e(0, 4) ]) ])
+            instruction(0, 4, [ instruction_e(0, 4, [ mnemonic_e(0, 4) ]) ])
         ]) ]
     };
 }
@@ -525,7 +513,7 @@ fn instructions() {
         rule: Rule::instructions,
         tokens: [ instructions(0, 18, [
             labeled_instruction(14, 18, [
-                instruction(14, 18, [ instruction_e(14, 18, [ opcode_e(14, 18) ]) ])
+                instruction(14, 18, [ instruction_e(14, 18, [ mnemonic_e(14, 18) ]) ])
             ])
         ]) ]
     };
@@ -553,7 +541,7 @@ ADD $t0, $t1, $t2";
             ]),
             instructions(34, 72, [
                 labeled_instruction(55, 72, [ instruction(55, 72, [ instruction_alu(55, 72, [
-                    opcode_alu_sep(55, 59, [ opcode_alu(55, 58) ]),
+                    mnemonic_alu(55, 58),
                     register(59, 62, [ register_id(60, 62) ]),
                     register(64, 67, [ register_id(65, 67) ]),
                     register(69, 72, [ register_id(70, 72) ])
